@@ -889,101 +889,149 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
     # Проверяем все атрибуты сообщения
     logger.info(f"Атрибуты сообщения: {[attr for attr in dir(update.message) if not attr.startswith('_')]}")
     
-    # Handle forwarded messages (for manual monitoring setup)
-    if update.message and hasattr(update.message, 'forward_origin') and update.message.forward_origin and hasattr(update.message.forward_origin, 'chat'):
-        chat = update.message.forward_origin.chat
-        chat_id = chat.id
-        chat_title = chat.title or "Неизвестный чат"
-        is_channel = chat.type == "channel"
-        
-        logger.info(f"Обрабатываю пересланное сообщение из {chat_title} (ID: {chat_id}, тип: {'канал' if is_channel else 'чат'})")
-        
+    # Handle forwarded messages (PASSIVE MONITORING - no admin rights needed)
+    if update.message and hasattr(update.message, 'forward_origin') and update.message.forward_origin:
         user_id = update.effective_user.id
         user = Storage.get_user(user_id)
         
-        # Check if the message is replying to a command
-        if update.message.reply_to_message and update.message.reply_to_message.text:
-            command_text = update.message.reply_to_message.text.split()[0]
-            logger.info(f"Сообщение является ответом на команду: {command_text}")
+        # Handle different types of forward origins
+        chat_id = None
+        chat_title = "Неизвестный источник"
+        is_channel = False
+        
+        # Check if forwarded from a chat/channel
+        if hasattr(update.message.forward_origin, 'chat') and update.message.forward_origin.chat:
+            chat = update.message.forward_origin.chat
+            chat_id = chat.id
+            chat_title = chat.title or f"Чат {chat_id}"
+            is_channel = chat.type == "channel"
+        # Check if forwarded from a user (private chat)
+        elif hasattr(update.message.forward_origin, 'sender_user') and update.message.forward_origin.sender_user:
+            sender = update.message.forward_origin.sender_user
+            chat_id = sender.id
+            chat_title = f"Личные сообщения от {sender.full_name}"
+            is_channel = False
+        # Check if forwarded from hidden user
+        elif hasattr(update.message.forward_origin, 'sender_user_name'):
+            chat_title = f"Пересланное от {update.message.forward_origin.sender_user_name}"
+            chat_id = hash(update.message.forward_origin.sender_user_name)  # Create pseudo-ID
+            is_channel = False
+        
+        if chat_id:
+            logger.info(f"Обрабатываю пересланное сообщение из {chat_title} (ID: {chat_id}, тип: {'канал' if is_channel else 'чат'})")
             
-            if command_text == "/monitor":
-                # Add the chat/channel to the monitored list
-                if is_channel:
-                    user.monitored_channels.add(chat_id)
-                    logger.info(f"Добавлен канал {chat_id} в мониторинг для пользователя {user_id}")
-                else:
-                    user.monitored_chats.add(chat_id)
-                    logger.info(f"Добавлен чат {chat_id} в мониторинг для пользователя {user_id}")
+            # Check if the message is replying to a command
+            if update.message.reply_to_message and update.message.reply_to_message.text:
+                command_text = update.message.reply_to_message.text.split()[0]
+                logger.info(f"Сообщение является ответом на команду: {command_text}")
                 
-                Storage.update_user(user)
-                await update.message.reply_text(
-                    f"✅ Теперь мониторится {chat_title} ({chat_id}).\n"
-                    f"Я буду уведомлять вас о важных сообщениях из этого {'канала' if is_channel else 'чата'}."
+                if command_text == "/monitor" or command_text == "/passive_monitor":
+                    # Add the chat/channel to the monitored list for PASSIVE monitoring
+                    if is_channel:
+                        user.monitored_channels.add(chat_id)
+                        logger.info(f"Добавлен канал {chat_id} в пассивный мониторинг для пользователя {user_id}")
+                    else:
+                        user.monitored_chats.add(chat_id)
+                        logger.info(f"Добавлен чат {chat_id} в пассивный мониторинг для пользователя {user_id}")
+                    
+                    Storage.update_user(user)
+                    await update.message.reply_text(
+                        f"✅ <b>Пассивный мониторинг включен</b>\n\n"
+                        f"📊 Источник: {chat_title} ({chat_id})\n"
+                        f"🔍 Теперь вы можете пересылать сообщения из этого {'канала' if is_channel else 'чата'} "
+                        f"для автоматического анализа важности.\n\n"
+                        f"💡 <b>Как это работает:</b>\n"
+                        f"• Просто пересылайте интересные сообщения боту\n"
+                        f"• Бот автоматически их проанализирует\n"
+                        f"• Если сообщение важное - вы получите уведомление\n\n"
+                        f"⚠️ <b>Пассивный режим:</b> Бот анализирует только пересланные вами сообщения, "
+                        f"не требуя добавления в чат/канал.",
+                        parse_mode=ParseMode.HTML
+                    )
+                    return
+            
+            # Check if this source is already being monitored (passive or active)
+            is_already_monitored = False
+            monitoring_type = "неизвестно"
+            
+            if is_channel:
+                is_already_monitored = chat_id in user.monitored_channels
+                monitoring_type = "канал"
+            else:
+                is_already_monitored = chat_id in user.monitored_chats
+                monitoring_type = "чат"
+            
+            # Always analyze forwarded messages from monitored sources
+            if is_already_monitored:
+                # Process the message to analyze its importance
+                message = Message(
+                    message_id=update.message.message_id,
+                    chat_id=chat_id,
+                    chat_title=chat_title,
+                    text=update.message.text or update.message.caption or "",
+                    date=datetime.now(),
+                    is_channel=is_channel
                 )
+                
+                # Extract sender info if available
+                if hasattr(update.message.forward_origin, 'sender_user') and update.message.forward_origin.sender_user:
+                    message.sender_id = update.message.forward_origin.sender_user.id
+                    message.sender_name = update.message.forward_origin.sender_user.full_name
+                elif hasattr(update.message.forward_origin, 'sender_user_name'):
+                    message.sender_name = update.message.forward_origin.sender_user_name
+                
+                logger.info(f"Анализирую пересланное сообщение: {message.text[:50]}...")
+                
+                # Analyze message importance
+                importance_score = await evaluate_message_importance(message, user)
+                message.importance_score = importance_score
+                
+                logger.info(f"Оценка важности: {importance_score:.2f}, порог: {user.importance_threshold}")
+                
+                # Check if the message is important enough to notify the user
+                if importance_score >= user.importance_threshold:
+                    await update.message.reply_text(
+                        f"🔔 <b>ВАЖНОЕ СООБЩЕНИЕ ОБНАРУЖЕНО</b>\n\n"
+                        f"{message.to_user_notification()}\n\n"
+                        f"📋 <i>Источник: Пассивный мониторинг (пересланное сообщение)</i>",
+                        parse_mode=ParseMode.HTML
+                    )
+                else:
+                    await update.message.reply_text(
+                        f"📊 <b>Анализ завершен</b>\n\n"
+                        f"Сообщение из {chat_title} имеет оценку важности <b>{importance_score:.2f}</b>, "
+                        f"что ниже вашего порога <b>{user.importance_threshold}</b>.\n\n"
+                        f"💡 Вы можете изменить порог важности в настройках (/threshold).",
+                        parse_mode=ParseMode.HTML
+                    )
                 return
-        
-        # Check if this chat/channel is already being monitored
-        is_already_monitored = False
-        if is_channel:
-            is_already_monitored = chat_id in user.monitored_channels
-        else:
-            is_already_monitored = chat_id in user.monitored_chats
-        
-        if not is_already_monitored:
-            # Offer to add to monitoring
+            
+            # Offer to add to passive monitoring
             keyboard = [
-                [InlineKeyboardButton("✅ Добавить в мониторинг", callback_data=f"add_monitoring_{chat_id}_{'channel' if is_channel else 'chat'}")],
-                [InlineKeyboardButton("❌ Не добавлять", callback_data="dont_add_monitoring")]
+                [InlineKeyboardButton("✅ Включить пассивный мониторинг", callback_data=f"add_passive_monitoring_{chat_id}_{'channel' if is_channel else 'chat'}")],
+                [InlineKeyboardButton("🔍 Просто проанализировать", callback_data=f"analyze_once_{chat_id}_{'channel' if is_channel else 'chat'}")],
+                [InlineKeyboardButton("❌ Пропустить", callback_data="skip_monitoring")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await update.message.reply_text(
-                f"🔍 <b>Обнаружен новый {'канал' if is_channel else 'чат'}:</b> {chat_title}\n\n"
-                f"Хотите добавить его в мониторинг для анализа важных сообщений?\n\n"
-                f"📊 <b>Что это даст:</b>\n"
-                f"• Автоматический анализ всех сообщений\n"
-                f"• Уведомления о важных сообщениях\n"
-                f"• Фильтрация по вашим настройкам",
+                f"🔍 <b>Обнаружен новый источник:</b> {chat_title}\n\n"
+                f"📊 <b>Варианты действий:</b>\n\n"
+                f"🟢 <b>Пассивный мониторинг</b>\n"
+                f"• Анализ всех пересланных сообщений\n"
+                f"• Автоматические уведомления о важных сообщениях\n"
+                f"• Не требует прав администратора\n\n"
+                f"🔍 <b>Разовый анализ</b>\n"
+                f"• Анализ только этого сообщения\n"
+                f"• Без сохранения в мониторинг\n\n"
+                f"💡 <b>Преимущество:</b> Работает с любыми чатами и каналами, "
+                f"даже закрытыми, без необходимости добавления бота!",
                 parse_mode=ParseMode.HTML,
                 reply_markup=reply_markup
             )
             return
-        
-        # Process the message to analyze its importance
-        message = Message(
-            message_id=update.message.message_id,
-            chat_id=chat_id,
-            chat_title=chat_title,
-            text=update.message.text or update.message.caption or "",
-            date=datetime.now(),
-            is_channel=is_channel
-        )
-        
-        if update.message.forward_origin and hasattr(update.message.forward_origin, 'sender_user'):
-            message.sender_id = update.message.forward_origin.sender_user.id
-            message.sender_name = update.message.forward_origin.sender_user.full_name
-        
-        logger.info(f"Анализирую сообщение: {message.text[:50]}...")
-        
-        # Analyze message importance
-        importance_score = await evaluate_message_importance(message, user)
-        message.importance_score = importance_score
-        
-        logger.info(f"Оценка важности: {importance_score:.2f}, порог: {user.importance_threshold}")
-        
-        # Check if the message is important enough to notify the user
-        if importance_score >= user.importance_threshold:
-            await update.message.reply_text(
-                message.to_user_notification(),
-                parse_mode=ParseMode.MARKDOWN
-            )
-        else:
-            await update.message.reply_text(
-                f"📊 Сообщение из {chat_title} имеет оценку важности {importance_score:.2f}, "
-                f"что ниже вашего порога {user.importance_threshold}."
-            )
     
-    # Handle direct messages from channels/groups (when bot is added to them)
+    # Handle direct messages from channels/groups (ACTIVE MONITORING - when bot is added)
     elif update.message and update.message.chat and update.message.chat.type in ["channel", "group", "supergroup"]:
         chat_id = update.message.chat.id
         chat_title = update.message.chat.title or "Неизвестный чат"
@@ -1029,13 +1077,17 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
                 
                 # If message is important enough, send notification to user
                 if importance_score >= user.importance_threshold:
-                    notification_text = message.to_user_notification()
+                    notification_text = (
+                        f"🔔 <b>ВАЖНОЕ СООБЩЕНИЕ</b>\n\n"
+                        f"{message.to_user_notification()}\n\n"
+                        f"📋 <i>Источник: Активный мониторинг (бот в чате/канале)</i>"
+                    )
                     
                     # Send notification to the user
                     await context.bot.send_message(
                         chat_id=user.user_id,
                         text=notification_text,
-                        parse_mode=ParseMode.MARKDOWN
+                        parse_mode=ParseMode.HTML
                     )
                     
                     logger.info(f"Отправлено уведомление пользователю {user.user_id} "
@@ -1047,7 +1099,7 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
             except Exception as e:
                 logger.error(f"Ошибка обработки сообщения для пользователя {user.user_id}: {e}")
     
-    # Handle commands in private chat (including /monitor)
+    # Handle commands in private chat
     elif update.message and update.message.chat and update.message.chat.type == "private":
         # Check if this is a command
         if update.message.text and update.message.text.startswith('/'):
@@ -1055,19 +1107,24 @@ async def handle_message(update: Update, context: CallbackContext) -> None:
             logger.info(f"Получена команда в личном чате: {command}")
             
             # Handle /monitor command specifically
-            if command == "/monitor":
-                # Check if there's a recent forwarded message in the chat
-                # For now, we'll show instructions and suggest using the menu
+            if command == "/monitor" or command == "/passive_monitor":
                 await update.message.reply_text(
-                    "📋 <b>Как добавить чат/канал для мониторинга:</b>\n\n"
-                    "1️⃣ Добавьте бота в чат или канал\n"
-                    "2️⃣ Перешлите любое сообщение из этого чата/канала боту\n"
-                    "3️⃣ Используйте меню для добавления в мониторинг\n\n"
-                    "💡 <b>Альтернативный способ:</b>\n"
-                    "• Используйте /menu для удобной навигации\n"
-                    "• Выберите '📊 Мониторинг' → '➕ Добавить чат/канал'\n\n"
-                    "✅ После добавления бот будет автоматически анализировать все сообщения "
-                    "из этого чата/канала и уведомлять вас о важных.",
+                    "🔍 <b>Пассивный мониторинг сообщений</b>\n\n"
+                    "📋 <b>Как настроить пассивный мониторинг:</b>\n\n"
+                    "1️⃣ <b>Перешлите сообщение</b>\n"
+                    "   • Перешлите любое сообщение из чата/канала боту\n\n"
+                    "2️⃣ <b>Выберите действие</b>\n"
+                    "   • Включить пассивный мониторинг\n"
+                    "   • Или проанализировать разово\n\n"
+                    "3️⃣ <b>Пересылайте интересные сообщения</b>\n"
+                    "   • Бот будет анализировать их автоматически\n"
+                    "   • Уведомления о важных сообщениях\n\n"
+                    "💡 <b>Преимущества пассивного мониторинга:</b>\n"
+                    "• ✅ Работает с любыми чатами/каналами\n"
+                    "• ✅ Не требует прав администратора\n"
+                    "• ✅ Работает с закрытыми каналами\n"
+                    "• ✅ Полная приватность\n\n"
+                    "🚀 <b>Попробуйте:</b> Перешлите сообщение из любого чата или канала!",
                     parse_mode=ParseMode.HTML
                 )
                 return
