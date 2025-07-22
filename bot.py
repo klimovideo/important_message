@@ -5,10 +5,14 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackContext, MessageHandler, CallbackQueryHandler, filters
 from telegram.constants import ParseMode
 
-from config import TELEGRAM_TOKEN, DEFAULT_IMPORTANCE_THRESHOLD
+from config import TELEGRAM_TOKEN, DEFAULT_IMPORTANCE_THRESHOLD, USERBOT_ENABLED
 from models import Message, Storage, UserPreferences
 from ai_service import evaluate_message_importance
 from utils import setup_logging
+
+# Import userbot functionality
+if USERBOT_ENABLED:
+    from userbot import get_userbot, start_userbot, stop_userbot
 
 # Setup logging
 setup_logging()
@@ -52,6 +56,10 @@ async def start_command(update: Update, context: CallbackContext) -> None:
             InlineKeyboardButton("🗑️ Очистить данные", callback_data="menu_clear_data")
         ]
     ]
+    
+    # Add userbot button if enabled
+    if USERBOT_ENABLED:
+        keyboard.insert(-1, [InlineKeyboardButton("🤖 Userbot", callback_data="menu_userbot")])
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(welcome_text, reply_markup=reply_markup)
@@ -79,11 +87,20 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "⚙️ <b>Настройки:</b>\n"
         "• /threshold - Установить порог важности (0.0-1.0)\n"
         "• /clear_data - Очистить все данные\n\n"
+        "🤖 <b>Userbot (Скрытый мониторинг):</b>\n"
+        "• /userbot - Управление userbot\n"
+        "• /userbot_start - Запустить скрытый мониторинг\n"
+        "• /userbot_join <ссылка> - Присоединиться к каналу/чату\n\n"
         "💡 <b>Как использовать:</b>\n"
+        "📊 <b>Обычный режим:</b>\n"
         "1. Добавьте бота в чаты/каналы для мониторинга\n"
         "2. Перешлите сообщение из чата/канала боту\n"
-        "3. Ответьте /monitor на пересланное сообщение\n"
-        "4. Бот автоматически анализирует и уведомляет о важных сообщениях\n\n"
+        "3. Ответьте /monitor на пересланное сообщение\n\n"
+        "🤖 <b>Userbot режим (рекомендуется):</b>\n"
+        "1. Настройте учетные данные API в .env файле\n"
+        "2. Запустите userbot: /userbot_start\n"
+        "3. Присоединитесь к каналам: /userbot_join <ссылка>\n"
+        "4. Полный автоматический анализ всех сообщений!\n\n"
         "🎛️ <b>Совет:</b> Используйте /menu для удобной навигации по всем функциям!"
     )
     await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
@@ -444,6 +461,260 @@ async def debug_command(update: Update, context: CallbackContext) -> None:
     )
     
     await update.message.reply_text(debug_text, parse_mode=ParseMode.HTML)
+
+async def userbot_command(update: Update, context: CallbackContext) -> None:
+    """Manage userbot functionality."""
+    if not USERBOT_ENABLED:
+        await update.message.reply_text(
+            "❌ <b>Userbot функциональность отключена</b>\n\n"
+            "Для включения userbot установите переменные окружения:\n"
+            "• TELEGRAM_API_ID\n"
+            "• TELEGRAM_API_HASH\n"
+            "• TELEGRAM_PHONE\n"
+            "• USERBOT_ENABLED=true",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    userbot = get_userbot()
+    
+    status_text = "🤖 <b>Userbot - Скрытый мониторинг</b>\n\n"
+    
+    if userbot.is_running:
+        status_text += "✅ <b>Статус:</b> Активен\n"
+        monitored = userbot.get_monitored_sources()
+        status_text += f"📊 <b>Мониторится источников:</b> {len(monitored)}\n"
+        if monitored:
+            status_text += f"🔍 <b>ID источников:</b> {', '.join(map(str, monitored))}\n"
+    else:
+        status_text += "❌ <b>Статус:</b> Неактивен\n"
+    
+    status_text += (
+        f"\n💡 <b>Что такое Userbot:</b>\n"
+        f"• Использует фейковый аккаунт Telegram\n"
+        f"• Подписывается на каналы и чаты\n"
+        f"• Анализирует ВСЕ сообщения автоматически\n"
+        f"• Полная анонимность и приватность\n"
+        f"• Не требует прав администратора\n\n"
+        f"📋 <b>Команды:</b>\n"
+        f"• /userbot_start - Запустить userbot\n"
+        f"• /userbot_stop - Остановить userbot\n"
+        f"• /userbot_join <ссылка> - Присоединиться к каналу/чату\n"
+        f"• /userbot_leave <ID> - Покинуть канал/чат\n"
+        f"• /userbot_status - Статус и информация"
+    )
+    
+    await update.message.reply_text(status_text, parse_mode=ParseMode.HTML)
+
+async def userbot_start_command(update: Update, context: CallbackContext) -> None:
+    """Start the userbot."""
+    if not USERBOT_ENABLED:
+        await update.message.reply_text("❌ Userbot функциональность отключена.")
+        return
+    
+    userbot = get_userbot()
+    
+    if userbot.is_running:
+        await update.message.reply_text("✅ Userbot уже запущен!")
+        return
+    
+    await update.message.reply_text("🚀 Запускаю userbot...")
+    
+    success = await start_userbot()
+    
+    if success:
+        await update.message.reply_text(
+            "✅ <b>Userbot успешно запущен!</b>\n\n"
+            "🤖 Теперь вы можете использовать скрытый мониторинг:\n"
+            "• /userbot_join <ссылка> - присоединиться к каналу\n"
+            "• /userbot - просмотр статуса и команд",
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await update.message.reply_text(
+            "❌ <b>Ошибка запуска userbot</b>\n\n"
+            "Возможные причины:\n"
+            "• Неверные учетные данные\n"
+            "• Аккаунт заблокирован\n"
+            "• Проблемы с сетью\n\n"
+            "Проверьте логи для подробностей.",
+            parse_mode=ParseMode.HTML
+        )
+
+async def userbot_stop_command(update: Update, context: CallbackContext) -> None:
+    """Stop the userbot."""
+    if not USERBOT_ENABLED:
+        await update.message.reply_text("❌ Userbot функциональность отключена.")
+        return
+    
+    userbot = get_userbot()
+    
+    if not userbot.is_running:
+        await update.message.reply_text("❌ Userbot не запущен.")
+        return
+    
+    await update.message.reply_text("🛑 Останавливаю userbot...")
+    await stop_userbot()
+    await update.message.reply_text("✅ Userbot остановлен.")
+
+async def userbot_join_command(update: Update, context: CallbackContext) -> None:
+    """Join a chat or channel with userbot."""
+    if not USERBOT_ENABLED:
+        await update.message.reply_text("❌ Userbot функциональность отключена.")
+        return
+    
+    userbot = get_userbot()
+    
+    if not userbot.is_running:
+        await update.message.reply_text("❌ Сначала запустите userbot: /userbot_start")
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "📋 <b>Использование:</b>\n\n"
+            "/userbot_join <ссылка_или_username>\n\n"
+            "Примеры:\n"
+            "• /userbot_join https://t.me/channel_name\n"
+            "• /userbot_join @channel_name\n"
+            "• /userbot_join channel_name",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    chat_link = context.args[0]
+    await update.message.reply_text(f"🔍 Присоединяюсь к {chat_link}...")
+    
+    success = await userbot.join_chat(chat_link)
+    
+    if success:
+        # Get chat info
+        chat_info = await userbot.get_chat_info(chat_link)
+        if chat_info:
+            user_id = update.effective_user.id
+            user = Storage.get_user(user_id)
+            
+            # Add to user's monitoring list
+            if chat_info['type'] == 'CHANNEL':
+                user.monitored_channels.add(chat_info['id'])
+            else:
+                user.monitored_chats.add(chat_info['id'])
+            Storage.update_user(user)
+            
+            await update.message.reply_text(
+                f"✅ <b>Успешно присоединился!</b>\n\n"
+                f"📊 <b>Информация:</b>\n"
+                f"• Название: {chat_info['title']}\n"
+                f"• ID: {chat_info['id']}\n"
+                f"• Тип: {chat_info['type']}\n"
+                f"• Участников: {chat_info.get('members_count', 'Неизвестно')}\n\n"
+                f"🔔 Userbot теперь мониторит этот источник и будет уведомлять о важных сообщениях!",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await update.message.reply_text("✅ Присоединился, но не удалось получить информацию о чате.")
+    else:
+        await update.message.reply_text(
+            f"❌ <b>Не удалось присоединиться к {chat_link}</b>\n\n"
+            f"Возможные причины:\n"
+            f"• Канал/чат приватный\n"
+            f"• Неверная ссылка\n"
+            f"• Флуд-лимиты\n"
+            f"• Аккаунт ограничен",
+            parse_mode=ParseMode.HTML
+        )
+
+async def userbot_leave_command(update: Update, context: CallbackContext) -> None:
+    """Leave a chat or channel with userbot."""
+    if not USERBOT_ENABLED:
+        await update.message.reply_text("❌ Userbot функциональность отключена.")
+        return
+    
+    userbot = get_userbot()
+    
+    if not userbot.is_running:
+        await update.message.reply_text("❌ Сначала запустите userbot: /userbot_start")
+        return
+    
+    if not context.args:
+        monitored = userbot.get_monitored_sources()
+        if monitored:
+            sources_text = "📋 <b>Мониторимые источники:</b>\n\n"
+            for source_id in monitored:
+                sources_text += f"• ID: {source_id}\n"
+            sources_text += "\n💡 Используйте: /userbot_leave <ID>"
+        else:
+            sources_text = "❌ Нет мониторимых источников."
+        
+        await update.message.reply_text(sources_text, parse_mode=ParseMode.HTML)
+        return
+    
+    try:
+        chat_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ ID должен быть числом.")
+        return
+    
+    await update.message.reply_text(f"🚪 Покидаю чат {chat_id}...")
+    
+    success = await userbot.leave_chat(chat_id)
+    
+    if success:
+        # Remove from user's monitoring list
+        user_id = update.effective_user.id
+        user = Storage.get_user(user_id)
+        user.monitored_chats.discard(chat_id)
+        user.monitored_channels.discard(chat_id)
+        Storage.update_user(user)
+        
+        await update.message.reply_text(
+            f"✅ <b>Покинул чат/канал {chat_id}</b>\n\n"
+            f"Мониторинг этого источника остановлен.",
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await update.message.reply_text(
+            f"❌ Не удалось покинуть чат/канал {chat_id}",
+            parse_mode=ParseMode.HTML
+        )
+
+async def userbot_status_command(update: Update, context: CallbackContext) -> None:
+    """Show detailed userbot status."""
+    if not USERBOT_ENABLED:
+        await update.message.reply_text("❌ Userbot функциональность отключена.")
+        return
+    
+    userbot = get_userbot()
+    user_id = update.effective_user.id
+    user = Storage.get_user(user_id)
+    
+    status_text = "📊 <b>Подробный статус Userbot</b>\n\n"
+    
+    # Userbot status
+    if userbot.is_running:
+        status_text += "✅ <b>Userbot:</b> Активен\n"
+        try:
+            me = await userbot.app.get_me()
+            status_text += f"👤 <b>Аккаунт:</b> {me.first_name} (@{me.username or 'без_username'})\n"
+        except:
+            status_text += "👤 <b>Аккаунт:</b> Информация недоступна\n"
+    else:
+        status_text += "❌ <b>Userbot:</b> Неактивен\n"
+    
+    # Monitoring sources
+    monitored_userbot = userbot.get_monitored_sources()
+    status_text += f"\n📊 <b>Мониторинг через userbot:</b>\n"
+    status_text += f"• Источников: {len(monitored_userbot)}\n"
+    if monitored_userbot:
+        status_text += f"• ID: {', '.join(map(str, monitored_userbot))}\n"
+    
+    # User monitoring (passive + active)
+    status_text += f"\n📋 <b>Ваш мониторинг:</b>\n"
+    status_text += f"• Чатов: {len(user.monitored_chats)}\n"
+    status_text += f"• Каналов: {len(user.monitored_channels)}\n"
+    status_text += f"• Порог важности: {user.importance_threshold}\n"
+    status_text += f"• Ключевых слов: {len(user.keywords)}\n"
+    
+    await update.message.reply_text(status_text, parse_mode=ParseMode.HTML)
 
 async def menu_command(update: Update, context: CallbackContext) -> None:
     """Show main menu."""
@@ -869,6 +1140,155 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
             "💡 Вы всегда можете добавить его позже через меню или переслав новое сообщение.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="menu_monitoring")]])
         )
+    
+    elif data == "menu_userbot":
+        if not USERBOT_ENABLED:
+            await query.edit_message_text(
+                "❌ <b>Userbot функциональность отключена</b>\n\n"
+                "Для включения userbot установите переменные окружения:\n"
+                "• TELEGRAM_API_ID\n"
+                "• TELEGRAM_API_HASH\n"
+                "• TELEGRAM_PHONE\n"
+                "• USERBOT_ENABLED=true",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад в меню", callback_data="menu_main")]]),
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        userbot = get_userbot()
+        
+        status_text = "🤖 <b>Userbot - Скрытый мониторинг</b>\n\n"
+        
+        if userbot.is_running:
+            status_text += "✅ <b>Статус:</b> Активен\n"
+            monitored = userbot.get_monitored_sources()
+            status_text += f"📊 <b>Мониторится источников:</b> {len(monitored)}\n"
+            if monitored:
+                status_text += f"🔍 <b>ID источников:</b> {', '.join(map(str, monitored))}\n"
+        else:
+            status_text += "❌ <b>Статус:</b> Неактивен\n"
+        
+        status_text += (
+            f"\n💡 <b>Что такое Userbot:</b>\n"
+            f"• Использует фейковый аккаунт Telegram\n"
+            f"• Подписывается на каналы и чаты\n"
+            f"• Анализирует ВСЕ сообщения автоматически\n"
+            f"• Полная анонимность и приватность\n"
+            f"• Не требует прав администратора\n\n"
+            f"🔧 <b>Управление через команды:</b>\n"
+            f"• /userbot_start - Запустить userbot\n"
+            f"• /userbot_join <ссылка> - Присоединиться к каналу\n"
+            f"• /userbot_status - Подробный статус"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("🚀 Запустить Userbot", callback_data="userbot_start")],
+            [InlineKeyboardButton("🛑 Остановить Userbot", callback_data="userbot_stop")],
+            [InlineKeyboardButton("📊 Статус", callback_data="userbot_status")],
+            [InlineKeyboardButton("🔙 Назад в меню", callback_data="menu_main")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(status_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    
+    elif data == "userbot_start":
+        if not USERBOT_ENABLED:
+            await query.edit_message_text("❌ Userbot функциональность отключена.")
+            return
+        
+        userbot = get_userbot()
+        
+        if userbot.is_running:
+            await query.edit_message_text(
+                "✅ Userbot уже запущен!",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="menu_userbot")]])
+            )
+            return
+        
+        await query.edit_message_text("🚀 Запускаю userbot...")
+        
+        success = await start_userbot()
+        
+        if success:
+            await query.edit_message_text(
+                "✅ <b>Userbot успешно запущен!</b>\n\n"
+                "🤖 Теперь используйте команды:\n"
+                "• /userbot_join <ссылка> - присоединиться к каналу\n"
+                "• /userbot_status - просмотр статуса",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="menu_userbot")]]),
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await query.edit_message_text(
+                "❌ <b>Ошибка запуска userbot</b>\n\n"
+                "Проверьте учетные данные и логи.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="menu_userbot")]]),
+                parse_mode=ParseMode.HTML
+            )
+    
+    elif data == "userbot_stop":
+        if not USERBOT_ENABLED:
+            await query.edit_message_text("❌ Userbot функциональность отключена.")
+            return
+        
+        userbot = get_userbot()
+        
+        if not userbot.is_running:
+            await query.edit_message_text(
+                "❌ Userbot не запущен.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="menu_userbot")]])
+            )
+            return
+        
+        await query.edit_message_text("🛑 Останавливаю userbot...")
+        await stop_userbot()
+        await query.edit_message_text(
+            "✅ Userbot остановлен.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="menu_userbot")]])
+        )
+    
+    elif data == "userbot_status":
+        if not USERBOT_ENABLED:
+            await query.edit_message_text("❌ Userbot функциональность отключена.")
+            return
+        
+        userbot = get_userbot()
+        user_id = update.effective_user.id
+        user = Storage.get_user(user_id)
+        
+        status_text = "📊 <b>Подробный статус Userbot</b>\n\n"
+        
+        # Userbot status
+        if userbot.is_running:
+            status_text += "✅ <b>Userbot:</b> Активен\n"
+            try:
+                if userbot.app:
+                    me = await userbot.app.get_me()
+                    status_text += f"👤 <b>Аккаунт:</b> {me.first_name} (@{me.username or 'без_username'})\n"
+            except:
+                status_text += "👤 <b>Аккаунт:</b> Информация недоступна\n"
+        else:
+            status_text += "❌ <b>Userbot:</b> Неактивен\n"
+        
+        # Monitoring sources
+        monitored_userbot = userbot.get_monitored_sources()
+        status_text += f"\n📊 <b>Мониторинг через userbot:</b>\n"
+        status_text += f"• Источников: {len(monitored_userbot)}\n"
+        if monitored_userbot:
+            status_text += f"• ID: {', '.join(map(str, monitored_userbot))}\n"
+        
+        # User monitoring (passive + active)
+        status_text += f"\n📋 <b>Ваш мониторинг:</b>\n"
+        status_text += f"• Чатов: {len(user.monitored_chats)}\n"
+        status_text += f"• Каналов: {len(user.monitored_channels)}\n"
+        status_text += f"• Порог важности: {user.importance_threshold}\n"
+        status_text += f"• Ключевых слов: {len(user.keywords)}\n"
+        
+        await query.edit_message_text(
+            status_text,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Назад", callback_data="menu_userbot")]]),
+            parse_mode=ParseMode.HTML
+        )
 
 async def handle_message(update: Update, context: CallbackContext) -> None:
     """Handle incoming messages."""
@@ -1154,8 +1574,17 @@ def main() -> None:
     application.add_handler(CommandHandler("clear_data", clear_data_command))
     application.add_handler(CommandHandler("setup", setup_command))
     application.add_handler(CommandHandler("tips", tips_command))
-    application.add_handler(CommandHandler("debug", debug_command)) # Add debug command handler
-    application.add_handler(CommandHandler("menu", menu_command)) # Add menu command handler
+    application.add_handler(CommandHandler("debug", debug_command))
+    application.add_handler(CommandHandler("menu", menu_command))
+    
+    # Add userbot command handlers
+    if USERBOT_ENABLED:
+        application.add_handler(CommandHandler("userbot", userbot_command))
+        application.add_handler(CommandHandler("userbot_start", userbot_start_command))
+        application.add_handler(CommandHandler("userbot_stop", userbot_stop_command))
+        application.add_handler(CommandHandler("userbot_join", userbot_join_command))
+        application.add_handler(CommandHandler("userbot_leave", userbot_leave_command))
+        application.add_handler(CommandHandler("userbot_status", userbot_status_command))
     
     # Add callback query handler
     application.add_handler(CallbackQueryHandler(callback_handler))
@@ -1163,6 +1592,9 @@ def main() -> None:
     # Add message handlers
     # Handle all messages (forwarded and direct from channels/groups)
     application.add_handler(MessageHandler(filters.ALL, handle_message))
+    
+    # Make application globally available for userbot
+    globals()['application'] = application
     
     # Start the Bot
     application.run_polling()
