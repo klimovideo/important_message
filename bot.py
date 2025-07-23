@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import html
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackContext, MessageHandler, CallbackQueryHandler, filters
@@ -152,7 +153,7 @@ async def submit_post_command(update: Update, context: CallbackContext) -> None:
             if hasattr(update.message.reply_to_message, 'forward_origin') and update.message.reply_to_message.forward_origin:
                 if hasattr(update.message.reply_to_message.forward_origin, 'chat'):
                     source_chat = update.message.reply_to_message.forward_origin.chat
-                    source_info = f"Пересланное из: {source_chat.title or 'Неизвестный чат'}"
+                    source_info = f"Пересланное из: {html.escape(source_chat.title or 'Неизвестный чат')}"
         else:
             await update.message.reply_text("❌ Пересланное сообщение не содержит текста.")
             return
@@ -184,7 +185,7 @@ async def submit_post_command(update: Update, context: CallbackContext) -> None:
         )
         
     except PermissionError as e:
-        await update.message.reply_text(f"❌ {e}")
+        await update.message.reply_text(f"❌ {html.escape(str(e))}")
     except Exception as e:
         logger.error(f"Ошибка при отправке поста: {e}")
         await update.message.reply_text("❌ Произошла ошибка при отправке поста.")
@@ -751,8 +752,8 @@ async def show_admin_config(update: Update, context: CallbackContext) -> None:
 async def show_channel_config(update: Update, context: CallbackContext) -> None:
     """Show channel configuration interface."""
     config = Storage.bot_config
-    channel_info = f"<code>{config.publish_channel_id}</code>" if config.publish_channel_id else "Не настроен"
-    username_info = f"@{config.publish_channel_username}" if config.publish_channel_username else "Не указан"
+    channel_info = f"<code>{html.escape(str(config.publish_channel_id))}</code>" if config.publish_channel_id else "Не настроен"
+    username_info = f"@{html.escape(config.publish_channel_username)}" if config.publish_channel_username else "Не указан"
     
     channel_text = (
         f"📢 <b>Настройка канала публикации</b>\n\n"
@@ -762,7 +763,7 @@ async def show_channel_config(update: Update, context: CallbackContext) -> None:
         f"• ID канала (например: -1001234567890)\n"
         f"• Username канала (например: @my_channel)\n\n"
         f"🔧 <b>Или используйте команду:</b>\n"
-        f"/admin_channel <ID или @username>"
+        f"/admin_channel &lt;ID или @username&gt;"
     )
     
     keyboard = [
@@ -882,7 +883,7 @@ async def handle_userbot_start(update: Update, context: CallbackContext) -> None
         
     except Exception as e:
         logger.error(f"Ошибка запуска userbot: {e}")
-        await update.message.reply_text(f"❌ Ошибка запуска userbot: {e}")
+        await update.message.reply_text(f"❌ Ошибка запуска userbot: {html.escape(str(e))}")
 
 async def handle_userbot_stop(update: Update, context: CallbackContext) -> None:
     """Handle userbot stop."""
@@ -901,7 +902,7 @@ async def handle_userbot_stop(update: Update, context: CallbackContext) -> None:
         
     except Exception as e:
         logger.error(f"Ошибка остановки userbot: {e}")
-        await update.message.reply_text(f"❌ Ошибка остановки userbot: {e}")
+        await update.message.reply_text(f"❌ Ошибка остановки userbot: {html.escape(str(e))}")
 
 async def handle_userbot_reset_session(update: Update, context: CallbackContext) -> None:
     """Handle userbot session reset."""
@@ -929,7 +930,7 @@ async def handle_userbot_reset_session(update: Update, context: CallbackContext)
         
     except Exception as e:
         logger.error(f"Ошибка сброса сессии userbot: {e}")
-        await update.message.reply_text(f"❌ Ошибка сброса сессии userbot: {e}")
+        await update.message.reply_text(f"❌ Ошибка сброса сессии userbot: {html.escape(str(e))}")
 
 async def show_userbot_join_interface(update: Update, context: CallbackContext) -> None:
     """Show userbot join interface."""
@@ -1061,9 +1062,9 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
         if keyword not in user.keywords:
             user.keywords.append(keyword)
             Storage.update_user(user)
-            await update.message.reply_text(f"✅ Добавлено важное слово: <b>{keyword}</b>", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(f"✅ Добавлено важное слово: <b>{html.escape(keyword)}</b>", parse_mode=ParseMode.HTML)
         else:
-            await update.message.reply_text(f"⚠️ Слово '<b>{keyword}</b>' уже есть в списке важных.", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(f"⚠️ Слово '<b>{html.escape(keyword)}</b>' уже есть в списке важных.", parse_mode=ParseMode.HTML)
         return
     
     # Handle keyword exclusions
@@ -1073,9 +1074,9 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
         if keyword not in user.exclude_keywords:
             user.exclude_keywords.append(keyword)
             Storage.update_user(user)
-            await update.message.reply_text(f"✅ Добавлено исключаемое слово: <b>{keyword}</b>", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(f"✅ Добавлено исключаемое слово: <b>{html.escape(keyword)}</b>", parse_mode=ParseMode.HTML)
         else:
-            await update.message.reply_text(f"⚠️ Слово '<b>{keyword}</b>' уже есть в списке исключаемых.", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(f"⚠️ Слово '<b>{html.escape(keyword)}</b>' уже есть в списке исключаемых.", parse_mode=ParseMode.HTML)
         return
     
     # Handle admin addition (for admins only)
@@ -1159,12 +1160,12 @@ async def handle_channel_config_text(update: Update, context: CallbackContext, t
             await update.message.reply_text(
                 f"✅ <b>Канал настроен успешно!</b>\n\n"
                 f"📋 <b>ID чата:</b> {chat.id}\n"
-                f"🏷️ <b>Username:</b> @{config.publish_channel_username}\n"
-                f"📝 <b>Название:</b> {chat.title}",
+                f"🏷️ <b>Username:</b> @{html.escape(config.publish_channel_username)}\n"
+                f"📝 <b>Название:</b> {html.escape(chat.title)}",
                 parse_mode=ParseMode.HTML
             )
         except Exception as e:
-            await update.message.reply_text(f"❌ Ошибка: {e}")
+            await update.message.reply_text(f"❌ Ошибка: {html.escape(str(e))}")
     
     elif text.lstrip('-').isdigit():
         # ID format
@@ -1181,14 +1182,14 @@ async def handle_channel_config_text(update: Update, context: CallbackContext, t
             await update.message.reply_text(
                 f"✅ <b>Канал настроен успешно!</b>\n\n"
                 f"📋 <b>ID канала:</b> {channel_id}\n"
-                f"📝 <b>Название:</b> {chat.title}",
+                f"📝 <b>Название:</b> {html.escape(chat.title)}",
                 parse_mode=ParseMode.HTML
             )
         except Exception as e:
             # Save ID even if we can't get info
             Storage.update_config(config)
             await update.message.reply_text(
-                f"⚠️ <b>Канал настроен</b>, но не удалось получить информацию: {e}\n\n"
+                f"⚠️ <b>Канал настроен</b>, но не удалось получить информацию: {html.escape(str(e))}\n\n"
                 f"📋 <b>ID канала:</b> {channel_id}",
                 parse_mode=ParseMode.HTML
             )
@@ -1219,7 +1220,7 @@ async def handle_userbot_join_text(update: Update, context: CallbackContext, tex
             )
     except Exception as e:
         logger.error(f"Ошибка присоединения к {text}: {e}")
-        await update.message.reply_text(f"❌ Ошибка присоединения: {e}")
+        await update.message.reply_text(f"❌ Ошибка присоединения: {html.escape(str(e))}")
 
 async def handle_userbot_leave_text(update: Update, context: CallbackContext, text: str) -> None:
     """Handle userbot leave from text input."""
@@ -1246,7 +1247,7 @@ async def handle_userbot_leave_text(update: Update, context: CallbackContext, te
             )
     except Exception as e:
         logger.error(f"Ошибка покидания {text}: {e}")
-        await update.message.reply_text(f"❌ Ошибка покидания: {e}")
+        await update.message.reply_text(f"❌ Ошибка покидания: {html.escape(str(e))}")
 
 async def handle_post_submission_text(update: Update, context: CallbackContext, text: str) -> None:
     """Handle post submission from regular text."""
