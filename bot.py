@@ -61,7 +61,8 @@ def get_userbot_reply_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [
         ["🚀 Запустить", "⏹️ Остановить"],
         ["➕ Присоединиться", "➖ Покинуть"],
-        ["📊 Статус", "🔙 Главное меню"]
+        ["📊 Статус", "🔄 Сброс сессии"],
+        ["🔙 Главное меню"]
     ]
     
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
@@ -314,6 +315,13 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
             await update.message.reply_text("❌ Userbot отключен.")
         return True
     
+    elif text == "🔄 Сброс сессии":
+        if USERBOT_ENABLED:
+            await handle_userbot_reset_session(update, context)
+        else:
+            await update.message.reply_text("❌ Userbot отключен.")
+        return True
+    
     # Back to main menu
     elif text == "🔙 Главное меню":
         reply_markup = get_main_reply_keyboard(user_id)
@@ -464,11 +472,21 @@ async def show_statistics_interface(update: Update, context: CallbackContext, us
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
-        stats_text,
-        reply_markup=reply_markup,
-        parse_mode=ParseMode.HTML
-    )
+    # Check if this is a callback query or regular message
+    if update.callback_query:
+        # Called from a callback query (button press)
+        await update.callback_query.edit_message_text(
+            stats_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        # Called from a regular message
+        await update.message.reply_text(
+            stats_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
 
 async def show_keywords_interface(update: Update, context: CallbackContext, user: UserPreferences) -> None:
     """Show keywords management interface."""
@@ -574,14 +592,18 @@ async def show_help_interface(update: Update, context: CallbackContext) -> None:
 async def show_userbot_interface(update: Update, context: CallbackContext) -> None:
     """Show userbot interface."""
     if not USERBOT_ENABLED:
-        await update.message.reply_text(
+        error_text = (
             "❌ <b>Userbot отключен</b>\n\n"
             "Для включения настройте переменные окружения:\n"
             "• TELEGRAM_API_ID\n"
             "• TELEGRAM_API_HASH\n"
-            "• TELEGRAM_PHONE",
-            parse_mode=ParseMode.HTML
+            "• TELEGRAM_PHONE"
         )
+        # Check if this is a callback query or regular message
+        if update.callback_query:
+            await update.callback_query.edit_message_text(error_text, parse_mode=ParseMode.HTML)
+        else:
+            await update.message.reply_text(error_text, parse_mode=ParseMode.HTML)
         return
     
     userbot = get_userbot()
@@ -610,11 +632,21 @@ async def show_userbot_interface(update: Update, context: CallbackContext) -> No
     
     reply_markup = get_userbot_reply_keyboard()
     
-    await update.message.reply_text(
-        status_text,
-        reply_markup=reply_markup,
-        parse_mode=ParseMode.HTML
-    )
+    # Check if this is a callback query or regular message
+    if update.callback_query:
+        # Called from a callback query (button press)
+        await update.callback_query.edit_message_text(
+            status_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        # Called from a regular message
+        await update.message.reply_text(
+            status_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
 
 # ===========================================
 # ADMIN INTERFACES
@@ -812,11 +844,21 @@ async def show_admin_statistics(update: Update, context: CallbackContext) -> Non
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
-        stats_text,
-        reply_markup=reply_markup,
-        parse_mode=ParseMode.HTML
-    )
+    # Check if this is a callback query or regular message
+    if update.callback_query:
+        # Called from a callback query (button press)
+        await update.callback_query.edit_message_text(
+            stats_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        # Called from a regular message
+        await update.message.reply_text(
+            stats_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
 
 # ===========================================
 # USERBOT FUNCTIONS
@@ -860,6 +902,34 @@ async def handle_userbot_stop(update: Update, context: CallbackContext) -> None:
     except Exception as e:
         logger.error(f"Ошибка остановки userbot: {e}")
         await update.message.reply_text(f"❌ Ошибка остановки userbot: {e}")
+
+async def handle_userbot_reset_session(update: Update, context: CallbackContext) -> None:
+    """Handle userbot session reset."""
+    try:
+        userbot = get_userbot()
+        
+        # Stop userbot if it's running
+        if userbot.is_running:
+            await stop_userbot()
+        
+        # Reset the session
+        if userbot.reset_session():
+            await update.message.reply_text(
+                "🔄 <b>Сессия userbot сброшена</b>\n\n"
+                "✅ Файл сессии удален\n"
+                "🔐 При следующем запуске потребуется повторная авторизация\n\n"
+                "💡 <b>Используйте это, если:</b>\n"
+                "• Userbot не может запуститься\n"
+                "• Возникают ошибки авторизации\n"
+                "• Сменился номер телефона",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await update.message.reply_text("⚠️ Файл сессии не найден или не удалось его удалить.")
+        
+    except Exception as e:
+        logger.error(f"Ошибка сброса сессии userbot: {e}")
+        await update.message.reply_text(f"❌ Ошибка сброса сессии userbot: {e}")
 
 async def show_userbot_join_interface(update: Update, context: CallbackContext) -> None:
     """Show userbot join interface."""
@@ -948,15 +1018,32 @@ async def show_userbot_status(update: Update, context: CallbackContext) -> None:
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(
-            status_text,
-            reply_markup=reply_markup,
-            parse_mode=ParseMode.HTML
-        )
+        # Check if this is a callback query or regular message
+        if update.callback_query:
+            # Called from a callback query (button press)
+            await update.callback_query.edit_message_text(
+                status_text,
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            # Called from a regular message
+            await update.message.reply_text(
+                status_text,
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.HTML
+            )
         
     except Exception as e:
         logger.error(f"Ошибка получения статуса userbot: {e}")
-        await update.message.reply_text("❌ Ошибка получения статуса userbot.")
+        # Handle error response based on update type
+        if update.callback_query:
+            try:
+                await update.callback_query.edit_message_text("❌ Ошибка получения статуса userbot.")
+            except:
+                await update.callback_query.message.reply_text("❌ Ошибка получения статуса userbot.")
+        else:
+            await update.message.reply_text("❌ Ошибка получения статуса userbot.")
 
 # ===========================================
 # TEXT MESSAGE HANDLERS
