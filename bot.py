@@ -1202,7 +1202,7 @@ async def handle_userbot_join_text(update: Update, context: CallbackContext, tex
             return
         
         # Try to join the channel/chat
-        result = await userbot.join_chat_or_channel(text)
+        result = await userbot.join_chat(text)
         if result:
             await update.message.reply_text(
                 f"✅ <b>Успешно присоединился!</b>\n\n"
@@ -1230,7 +1230,7 @@ async def handle_userbot_leave_text(update: Update, context: CallbackContext, te
             return
         
         chat_id = int(text)
-        result = await userbot.leave_chat_or_channel(chat_id)
+        result = await userbot.leave_chat(chat_id)
         if result:
             await update.message.reply_text(
                 f"✅ <b>Успешно покинул источник</b>\n\n"
