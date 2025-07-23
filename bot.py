@@ -668,7 +668,7 @@ async def show_posts_moderation(update: Update, context: CallbackContext) -> Non
     post = pending_posts[0]
     post_text = (
         f"📝 <b>Пост на модерации</b> (1 из {len(pending_posts)})\n\n"
-        f"📋 <b>ID:</b> {post.post_id}\n"
+        f"📋 <b>ID поста:</b> {post.post_id}\n"
         f"👤 <b>От пользователя:</b> {post.user_id}\n"
         f"📅 <b>Время:</b> {post.submitted_at.strftime('%d.%m.%Y %H:%M')}\n"
     )
@@ -1158,7 +1158,7 @@ async def handle_channel_config_text(update: Update, context: CallbackContext, t
             
             await update.message.reply_text(
                 f"✅ <b>Канал настроен успешно!</b>\n\n"
-                f"📋 <b>ID:</b> {chat.id}\n"
+                f"📋 <b>ID чата:</b> {chat.id}\n"
                 f"🏷️ <b>Username:</b> @{config.publish_channel_username}\n"
                 f"📝 <b>Название:</b> {chat.title}",
                 parse_mode=ParseMode.HTML
@@ -1180,7 +1180,7 @@ async def handle_channel_config_text(update: Update, context: CallbackContext, t
             
             await update.message.reply_text(
                 f"✅ <b>Канал настроен успешно!</b>\n\n"
-                f"📋 <b>ID:</b> {channel_id}\n"
+                f"📋 <b>ID канала:</b> {channel_id}\n"
                 f"📝 <b>Название:</b> {chat.title}",
                 parse_mode=ParseMode.HTML
             )
@@ -1189,7 +1189,7 @@ async def handle_channel_config_text(update: Update, context: CallbackContext, t
             Storage.update_config(config)
             await update.message.reply_text(
                 f"⚠️ <b>Канал настроен</b>, но не удалось получить информацию: {e}\n\n"
-                f"📋 <b>ID:</b> {channel_id}",
+                f"📋 <b>ID канала:</b> {channel_id}",
                 parse_mode=ParseMode.HTML
             )
 
@@ -1234,14 +1234,14 @@ async def handle_userbot_leave_text(update: Update, context: CallbackContext, te
         if result:
             await update.message.reply_text(
                 f"✅ <b>Успешно покинул источник</b>\n\n"
-                f"📋 <b>ID:</b> {chat_id}\n"
+                f"📋 <b>ID чата:</b> {chat_id}\n"
                 f"🤖 Userbot прекратил мониторинг этого источника.",
                 parse_mode=ParseMode.HTML
             )
         else:
             await update.message.reply_text(
                 f"❌ <b>Не удалось покинуть источник</b>\n\n"
-                f"📋 <b>ID:</b> {chat_id}",
+                f"📋 <b>ID чата:</b> {chat_id}",
                 parse_mode=ParseMode.HTML
             )
     except Exception as e:
