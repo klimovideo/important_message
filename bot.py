@@ -751,7 +751,7 @@ async def show_admin_config(update: Update, context: CallbackContext) -> None:
 async def show_channel_config(update: Update, context: CallbackContext) -> None:
     """Show channel configuration interface."""
     config = Storage.bot_config
-    channel_info = f"ID: {config.publish_channel_id}" if config.publish_channel_id else "Не настроен"
+    channel_info = f"<code>{config.publish_channel_id}</code>" if config.publish_channel_id else "Не настроен"
     username_info = f"@{config.publish_channel_username}" if config.publish_channel_username else "Не указан"
     
     channel_text = (
