@@ -1,0 +1,22 @@
+{
+  "admin_ids": [
+    680985728
+  ],
+  "publish_channel_id": null,
+  "publish_channel_username": null,
+  "importance_threshold": 0.7,
+  "importance_criteria": {
+    "keywords_boost": [],
+    "keywords_reduce": [],
+    "sources_boost": [],
+    "sources_reduce": [],
+    "min_message_length": 10,
+    "max_message_length": 4000,
+    "exclude_forwarded": false,
+    "time_sensitivity": true
+  },
+  "auto_publish_enabled": true,
+  "require_admin_approval": true,
+  "created_at": "2025-07-23 10:41:31.931493",
+  "updated_at": "2025-07-23 10:41:31.931498"
+}
