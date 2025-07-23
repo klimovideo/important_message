@@ -168,7 +168,16 @@ class UserBot:
             logger.error("❌ Userbot: аккаунт заблокирован или деактивирован.")
             return False
         except Exception as e:
-            logger.error(f"❌ Ошибка запуска userbot: {e}")
+            error_msg = str(e)
+            if "KeyError: 0" in error_msg or error_msg == "0":
+                logger.error("❌ Userbot: ошибка авторизации. Возможно, сессия повреждена или учетные данные неверны.")
+                logger.info("💡 Попробуйте удалить файл userbot_session.session и перезапустить бота для повторной авторизации")
+            elif "ConnectionResetError" in error_msg:
+                logger.error("❌ Userbot: проблемы с сетевым соединением. Проверьте интернет-соединение.")
+            elif "FloodWait" in error_msg:
+                logger.error("❌ Userbot: превышен лимит запросов к Telegram API. Попробуйте позже.")
+            else:
+                logger.error(f"❌ Ошибка запуска userbot: {e}")
             return False
     
     async def stop(self):
@@ -177,6 +186,21 @@ class UserBot:
             await self.app.stop()
             self.is_running = False
             logger.info("🛑 Userbot остановлен")
+    
+    def reset_session(self):
+        """Сброс сессии userbot (удаление файла сессии)"""
+        try:
+            session_file = "userbot_session.session"
+            if os.path.exists(session_file):
+                os.remove(session_file)
+                logger.info("🔄 Файл сессии userbot удален. При следующем запуске потребуется повторная авторизация.")
+                return True
+            else:
+                logger.warning("⚠️ Файл сессии не найден.")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Ошибка удаления файла сессии: {e}")
+            return False
     
     async def join_chat(self, chat_username_or_link: str) -> bool:
         """Присоединение к чату или каналу"""
