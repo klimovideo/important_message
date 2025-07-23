@@ -202,14 +202,51 @@ class UserBot:
             logger.error(f"❌ Ошибка удаления файла сессии: {e}")
             return False
     
+    def _extract_username_from_link(self, link: str) -> str:
+        """Извлекает username из ссылки Telegram"""
+        # Убираем пробелы
+        link = link.strip()
+        
+        # Если это уже username (начинается с @)
+        if link.startswith('@'):
+            return link
+        
+        # Если это ссылка t.me
+        if 't.me/' in link:
+            # Извлекаем часть после t.me/
+            username = link.split('t.me/')[-1]
+            # Убираем параметры после ?
+            username = username.split('?')[0]
+            # Убираем слеши в конце
+            username = username.rstrip('/')
+            return f"@{username}"
+        
+        # Если это полная ссылка https://t.me/
+        if link.startswith('https://t.me/'):
+            username = link.replace('https://t.me/', '')
+            username = username.split('?')[0]
+            username = username.rstrip('/')
+            return f"@{username}"
+        
+        # Если это уже username без @
+        if not link.startswith('@') and not link.startswith('http'):
+            return f"@{link}"
+        
+        # Если ничего не подошло, возвращаем как есть
+        return link
+
     async def join_chat(self, chat_username_or_link: str) -> bool:
         """Присоединение к чату или каналу"""
         if not self.app or not self.is_running:
             return False
             
         try:
+            # Извлекаем username из ссылки
+            username = self._extract_username_from_link(chat_username_or_link)
+            logger.info(f"Userbot пытается присоединиться к {username}")
+            
             # Попытка присоединиться к чату/каналу
-            chat = await self.app.join_chat(chat_username_or_link)
+            chat = await self.app.join_chat(username)
             chat_id = chat.id
             
             # Добавляем в список мониторинга
@@ -260,6 +297,10 @@ class UserBot:
             return None
             
         try:
+            # Извлекаем username из ссылки если это ссылка
+            if isinstance(chat_username_or_id, str) and ('t.me/' in chat_username_or_id or chat_username_or_id.startswith('http')):
+                chat_username_or_id = self._extract_username_from_link(chat_username_or_id)
+            
             chat = await self.app.get_chat(chat_username_or_id)
             return {
                 'id': chat.id,
