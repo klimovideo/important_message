@@ -21,9 +21,10 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 CLIENT_ID = os.getenv("CLIENT_ID")
 SECRET = os.getenv("SECRET")
-if not CLIENT_ID or not SECRET:
-    logger.error("CLIENT_ID или SECRET не установлены в переменных окружения. Пожалуйста, добавьте CLIENT_ID и SECRET в ваш .env файл.")
-    raise RuntimeError("Отсутствуют учетные данные GigaChat: CLIENT_ID и SECRET должны быть установлены.")
+GIGACHAT_AVAILABLE = bool(CLIENT_ID and SECRET)
+
+if not GIGACHAT_AVAILABLE:
+    logger.warning("CLIENT_ID или SECRET не установлены. Бот будет работать с упрощенной оценкой важности.")
 
 # Token cache with expiration
 token_cache = {
@@ -199,6 +200,57 @@ def apply_importance_criteria(base_score: float, message: Message, user_preferen
     
     return max(0.0, min(1.0, modified_score))
 
+def simple_evaluate_importance(message: Message, user_preferences: UserPreferences) -> float:
+    """
+    Simple rule-based importance evaluation when AI is not available.
+    
+    Args:
+        message: The message to evaluate
+        user_preferences: User preferences for filtering
+    
+    Returns:
+        float: Importance score from 0.0 to 1.0
+    """
+    text_lower = message.text.lower()
+    score = 0.3  # Base score
+    
+    # Check for important keywords
+    important_keywords = ['срочно', 'важно', 'critical', 'urgent', 'deadline', 'дедлайн', 
+                         'встреча', 'meeting', 'внимание', 'attention', 'asap', 'немедленно']
+    for keyword in important_keywords:
+        if keyword in text_lower:
+            score = max(score, 0.7)
+            break
+    
+    # Check user's keywords
+    if user_preferences.keywords:
+        for keyword in user_preferences.keywords:
+            if keyword.lower() in text_lower:
+                score = max(score, 0.8)
+                break
+    
+    # Check exclude keywords
+    if user_preferences.exclude_keywords:
+        for keyword in user_preferences.exclude_keywords:
+            if keyword.lower() in text_lower:
+                score = min(score, 0.2)
+                break
+    
+    # Check message length (longer messages might be more important)
+    if len(message.text) > 200:
+        score += 0.1
+    
+    # Check for questions
+    if '?' in message.text:
+        score += 0.1
+    
+    # Check for mentions (if message contains @)
+    if '@' in message.text:
+        score += 0.1
+    
+    # Ensure score is within bounds
+    return max(0.0, min(1.0, score))
+
 def evaluate_message_importance(message: Message, user_preferences: UserPreferences) -> float:
     """
     Evaluate the importance of a message using AI and additional criteria.
@@ -210,6 +262,10 @@ def evaluate_message_importance(message: Message, user_preferences: UserPreferen
     Returns:
         float: Importance score from 0.0 to 1.0
     """
+    
+    # If GigaChat is not available, use simple evaluation
+    if not GIGACHAT_AVAILABLE:
+        return simple_evaluate_importance(message, user_preferences)
     
     # System prompt for importance evaluation
     system_prompt = f"""
