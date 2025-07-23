@@ -203,7 +203,8 @@ class AdminService:
                 )
                 
                 if comment:
-                    notification_text += f"💬 <b>Комментарий:</b> {comment}\n"
+                    import html
+                    notification_text += f"💬 <b>Комментарий:</b> {html.escape(comment)}\n"
                 
                 notification_text += f"\n📅 <b>Опубликовано:</b> {datetime.now().strftime('%d.%m.%Y %H:%M')}"
                 
@@ -254,7 +255,8 @@ class AdminService:
             )
             
             if comment:
-                notification_text += f"💬 <b>Причина:</b> {comment}\n"
+                import html
+                notification_text += f"💬 <b>Причина:</b> {html.escape(comment)}\n"
             
             notification_text += f"\n📅 <b>Рассмотрено:</b> {datetime.now().strftime('%d.%m.%Y %H:%M')}"
             
@@ -303,12 +305,13 @@ class AdminService:
         )
         
         if post.source_info:
-            notification_text += f"📋 <b>Источник:</b> {post.source_info}\n"
+            import html
+            notification_text += f"📋 <b>Источник:</b> {html.escape(post.source_info)}\n"
         
         if post.importance_score:
             notification_text += f"⭐ <b>Оценка ИИ:</b> {post.importance_score:.2f}\n"
         
-        notification_text += f"\n📄 <b>Текст:</b>\n{post.message_text[:500]}"
+        notification_text += f"\n📄 <b>Текст:</b>\n{html.escape(post.message_text[:500])}"
         
         if len(post.message_text) > 500:
             notification_text += "..."

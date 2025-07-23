@@ -91,11 +91,12 @@ class Message(BaseModel):
     
     def to_user_notification(self) -> str:
         """Format message as a notification to the user"""
-        source = f"Канал: {self.chat_title}" if self.is_channel else f"Чат: {self.chat_title}"
-        sender = f"\nОт: {self.sender_name}" if self.sender_name else ""
+        import html
+        source = f"Канал: {html.escape(self.chat_title)}" if self.is_channel else f"Чат: {html.escape(self.chat_title)}"
+        sender = f"\nОт: {html.escape(self.sender_name)}" if self.sender_name else ""
         importance = f"\nОценка важности: {self.importance_score:.2f}" if self.importance_score is not None else ""
         
-        return f"🔔 *ВАЖНОЕ СООБЩЕНИЕ*\n\n{source}{sender}{importance}\n\n{self.text}"
+        return f"🔔 *ВАЖНОЕ СООБЩЕНИЕ*\n\n{source}{sender}{importance}\n\n{html.escape(self.text)}"
 
 class Storage:
     """Simple JSON-based storage for user preferences"""
