@@ -761,9 +761,10 @@ async def show_channel_config(update: Update, context: CallbackContext) -> None:
         f"🏷️ <b>Username:</b> {username_info}\n\n"
         f"💡 <b>Для настройки отправьте сообщение с:</b>\n"
         f"• ID канала (например: -1001234567890)\n"
-        f"• Username канала (например: @my_channel)\n\n"
+        f"• Username канала (например: @my_channel)\n"
+        f"• Ссылку на канал (например: https://t.me/my_channel)\n\n"
         f"🔧 <b>Или используйте команду:</b>\n"
-        f"/admin_channel &lt;ID или @username&gt;"
+        f"/admin_channel &lt;ID, @username или ссылка&gt;"
     )
     
     keyboard = [
@@ -1109,7 +1110,7 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
         return
     
     # Handle channel configuration (for admins only)
-    elif (text.startswith('@') or text.lstrip('-').isdigit()) and Storage.is_admin(user_id):
+    elif (text.startswith('@') or text.lstrip('-').isdigit() or 't.me/' in text) and Storage.is_admin(user_id):
         await handle_channel_config_text(update, context, text)
         return
     
@@ -1148,12 +1149,52 @@ async def handle_channel_config_text(update: Update, context: CallbackContext, t
     """Handle channel configuration from text input."""
     config = Storage.bot_config
     
+    # Helper function to extract username from link
+    def extract_username_from_link(link: str) -> str:
+        link = link.strip()
+        if link.startswith('@'):
+            return link
+        if 't.me/' in link:
+            username = link.split('t.me/')[-1]
+            username = username.split('?')[0]
+            username = username.rstrip('/')
+            return f"@{username}"
+        if link.startswith('https://t.me/'):
+            username = link.replace('https://t.me/', '')
+            username = username.split('?')[0]
+            username = username.rstrip('/')
+            return f"@{username}"
+        if not link.startswith('@') and not link.startswith('http'):
+            return f"@{link}"
+        return link
+    
+    # Process different formats
     if text.startswith('@'):
         # Username format
         config.publish_channel_username = text[1:]  # Remove @
         try:
             # Try to get channel info to validate and get ID
             chat = await context.bot.get_chat(text)
+            config.publish_channel_id = chat.id
+            Storage.update_config(config)
+            
+            await update.message.reply_text(
+                f"✅ <b>Канал настроен успешно!</b>\n\n"
+                f"📋 <b>ID чата:</b> {chat.id}\n"
+                f"🏷️ <b>Username:</b> @{html.escape(config.publish_channel_username)}\n"
+                f"📝 <b>Название:</b> {html.escape(chat.title)}",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка: {html.escape(str(e))}")
+    
+    elif 't.me/' in text:
+        # Link format
+        username = extract_username_from_link(text)
+        config.publish_channel_username = username[1:]  # Remove @
+        try:
+            # Try to get channel info to validate and get ID
+            chat = await context.bot.get_chat(username)
             config.publish_channel_id = chat.id
             Storage.update_config(config)
             
