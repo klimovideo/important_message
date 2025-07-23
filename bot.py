@@ -72,6 +72,55 @@ def get_userbot_reply_keyboard() -> ReplyKeyboardMarkup:
 # ESSENTIAL COMMANDS (минимум)
 # ===========================================
 
+async def get_bot_admin_channels(bot):
+    """Получает список каналов, где бот является администратором"""
+    admin_channels = []
+    try:
+        # Получаем информацию о боте
+        bot_info = await bot.get_me()
+        bot_id = bot_info.id
+        
+        checked_channels = set()
+        
+        # Проверяем все каналы из конфига пользователей
+        all_users = Storage.get_all_users()
+        for user in all_users.values():
+            for channel_id in user.monitored_channels:
+                if channel_id not in checked_channels:
+                    checked_channels.add(channel_id)
+                    try:
+                        chat = await bot.get_chat(channel_id)
+                        # Проверяем, является ли бот администратором
+                        member = await bot.get_chat_member(channel_id, bot_id)
+                        if member.status in ['administrator', 'creator']:
+                            admin_channels.append({
+                                'id': channel_id,
+                                'title': chat.title,
+                                'username': chat.username
+                            })
+                    except Exception as e:
+                        logger.debug(f"Не удалось проверить канал {channel_id}: {e}")
+        
+        # Также проверяем канал из конфига, если он есть
+        config = Storage.bot_config
+        if config.publish_channel_id and config.publish_channel_id not in checked_channels:
+            try:
+                chat = await bot.get_chat(config.publish_channel_id)
+                member = await bot.get_chat_member(config.publish_channel_id, bot_id)
+                if member.status in ['administrator', 'creator']:
+                    admin_channels.append({
+                        'id': config.publish_channel_id,
+                        'title': chat.title,
+                        'username': chat.username
+                    })
+            except Exception as e:
+                logger.debug(f"Не удалось проверить канал конфига {config.publish_channel_id}: {e}")
+                
+    except Exception as e:
+        logger.error(f"Ошибка при получении списка каналов: {e}")
+    
+    return admin_channels
+
 async def start_command(update: Update, context: CallbackContext) -> None:
     """Send a welcome message when the command /start is issued."""
     user_id = update.effective_user.id
@@ -755,25 +804,54 @@ async def show_channel_config(update: Update, context: CallbackContext) -> None:
     channel_info = f"<code>{html.escape(str(config.publish_channel_id))}</code>" if config.publish_channel_id else "Не настроен"
     username_info = f"@{html.escape(config.publish_channel_username)}" if config.publish_channel_username else "Не указан"
     
+    # Получаем список каналов, где бот является администратором
+    admin_channels = await get_bot_admin_channels(context.bot)
+    
+    # Определяем, откуда пришел запрос
+    if hasattr(update, 'callback_query') and update.callback_query:
+        message_func = update.callback_query.message.reply_text
+    else:
+        message_func = update.message.reply_text
+    
     channel_text = (
         f"📢 <b>Настройка канала публикации</b>\n\n"
         f"📋 <b>Текущий канал:</b> {channel_info}\n"
         f"🏷️ <b>Username:</b> {username_info}\n\n"
-        f"💡 <b>Для настройки отправьте сообщение с:</b>\n"
+    )
+    
+    keyboard = []
+    
+    if admin_channels:
+        channel_text += f"📊 <b>Доступные каналы (где бот админ):</b>\n"
+        for channel in admin_channels:
+            channel_name = channel['title']
+            if channel['username']:
+                channel_name += f" (@{channel['username']})"
+            channel_text += f"• {html.escape(channel_name)}\n"
+            
+            # Добавляем кнопку для быстрого выбора канала
+            button_text = f"📢 {channel['title'][:30]}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=f"set_channel_{channel['id']}")])
+        
+        channel_text += "\n💡 <b>Нажмите на канал выше для быстрого выбора</b>\n\n"
+    else:
+        channel_text += "⚠️ <b>Нет доступных каналов</b>\n"
+        channel_text += "Добавьте бота администратором в канал, затем обновите эту страницу\n\n"
+    
+    channel_text += (
+        f"💡 <b>Или отправьте вручную:</b>\n"
         f"• ID канала (например: -1001234567890)\n"
         f"• Username канала (например: @my_channel)\n"
         f"• Ссылку на канал (например: https://t.me/my_channel)\n\n"
-        f"🔧 <b>Или используйте команду:</b>\n"
-        f"/admin_channel &lt;ID, @username или ссылка&gt;"
+        f"🔧 <b>Команда:</b> /admin_channel &lt;ID, @username или ссылка&gt;"
     )
     
-    keyboard = [
-        [InlineKeyboardButton("🗑️ Очистить настройки", callback_data="admin_clear_channel")]
-    ]
+    keyboard.append([InlineKeyboardButton("🔄 Обновить список", callback_data="refresh_channels")])
+    keyboard.append([InlineKeyboardButton("🗑️ Очистить настройки", callback_data="admin_clear_channel")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
+    await message_func(
         channel_text,
         reply_markup=reply_markup,
         parse_mode=ParseMode.HTML
@@ -1509,6 +1587,49 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
             else:
                 await query.edit_message_text("❌ Пост не найден.")
     
+    elif data == "admin_clear_channel":
+        if Storage.is_admin(user_id):
+            config = Storage.bot_config
+            config.publish_channel_id = None
+            config.publish_channel_username = None
+            Storage.update_config(config)
+            await query.edit_message_text("✅ Настройки канала публикации очищены.")
+    
+    elif data == "refresh_channels":
+        if Storage.is_admin(user_id):
+            # Обновляем интерфейс с новым списком каналов
+            await query.message.delete()
+            await show_channel_config(query, context)
+    
+    elif data.startswith("set_channel_"):
+        if Storage.is_admin(user_id):
+            channel_id = int(data.replace("set_channel_", ""))
+            config = Storage.bot_config
+            config.publish_channel_id = channel_id
+            
+            try:
+                # Получаем информацию о канале
+                chat = await context.bot.get_chat(channel_id)
+                if chat.username:
+                    config.publish_channel_username = chat.username
+                Storage.update_config(config)
+                
+                await query.edit_message_text(
+                    f"✅ <b>Канал настроен успешно!</b>\n\n"
+                    f"📋 <b>ID канала:</b> {channel_id}\n"
+                    f"📝 <b>Название:</b> {html.escape(chat.title)}\n"
+                    f"🏷️ <b>Username:</b> @{html.escape(chat.username) if chat.username else 'отсутствует'}",
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception as e:
+                # Сохраняем ID даже если не удалось получить информацию
+                Storage.update_config(config)
+                await query.edit_message_text(
+                    f"⚠️ Канал настроен, но не удалось получить информацию: {html.escape(str(e))}\n\n"
+                    f"📋 <b>ID канала:</b> {channel_id}",
+                    parse_mode=ParseMode.HTML
+                )
+    
     # Post submission callbacks
     elif data == "confirm_submit_text":
         pending_text = context.user_data.get('pending_post_text')
@@ -1638,7 +1759,7 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
             
             # Analyze importance
             user = Storage.get_user(user_id)
-            importance_score = await evaluate_message_importance(message, user)
+            importance_score = evaluate_message_importance(message, user)
             
             result_text = (
                 f"🔍 <b>Анализ завершен</b>\n\n"
@@ -1936,7 +2057,7 @@ async def handle_message_forwarded(update: Update, context: CallbackContext) -> 
                 logger.info(f"Анализирую пересланное сообщение: {message.text[:50]}...")
                 
                 # Analyze message importance
-                importance_score = await evaluate_message_importance(message, user)
+                importance_score = evaluate_message_importance(message, user)
                 message.importance_score = importance_score
                 
                 logger.info(f"Оценка важности: {importance_score:.2f}, порог: {user.importance_threshold}")
@@ -2049,7 +2170,7 @@ async def handle_message_forwarded(update: Update, context: CallbackContext) -> 
         
         for user in monitored_users:
             try:
-                importance_score = await evaluate_message_importance(message, user)
+                importance_score = evaluate_message_importance(message, user)
                 message.importance_score = importance_score
                 max_importance_score = max(max_importance_score, importance_score)
                 

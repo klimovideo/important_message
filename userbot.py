@@ -107,7 +107,7 @@ class UserBot:
         # Анализируем сообщение для каждого пользователя
         for user in monitoring_users:
             try:
-                importance_score = await evaluate_message_importance(msg, user)
+                importance_score = evaluate_message_importance(msg, user)
                 msg.importance_score = importance_score
                 
                 logger.info(f"Userbot: оценка важности для пользователя {user.user_id}: {importance_score:.2f}")
