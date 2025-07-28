@@ -43,7 +43,15 @@ class AdminService:
             return True
             
         except TelegramError as e:
-            logger.error(f"Ошибка публикации в канал: {e}")
+            error_msg = str(e)
+            if "Chat not found" in error_msg:
+                logger.error(f"Канал {config.publish_channel_id} не найден")
+            elif "bot was kicked" in error_msg or "bot is not a member" in error_msg:
+                logger.error(f"Бот не является участником канала {config.publish_channel_id}")
+            elif "need administrator rights" in error_msg:
+                logger.error(f"У бота нет прав администратора в канале {config.publish_channel_id}")
+            else:
+                logger.error(f"Ошибка публикации в канал: {e}")
             return False
     
     @staticmethod

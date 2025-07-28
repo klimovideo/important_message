@@ -1215,7 +1215,7 @@ async def show_userbot_status(update: Update, context: CallbackContext) -> None:
         if update.callback_query:
             try:
                 await update.callback_query.edit_message_text("❌ Ошибка получения статуса userbot.")
-            except:
+            except Exception:
                 await update.callback_query.message.reply_text("❌ Ошибка получения статуса userbot.")
         else:
             await update.message.reply_text("❌ Ошибка получения статуса userbot.")
@@ -1818,9 +1818,15 @@ async def handle_post_submission_text(update: Update, context: CallbackContext, 
 async def callback_handler(update: Update, context: CallbackContext) -> None:
     """Handle inline button callbacks."""
     query = update.callback_query
+    if not query:
+        return
+        
     await query.answer()
     
     data = query.data
+    if not data:
+        return
+        
     user_id = update.effective_user.id
     user = Storage.get_user(user_id)
     
@@ -2729,6 +2735,10 @@ async def handle_message_forwarded(update: Update, context: CallbackContext) -> 
 
 def main() -> None:
     """Start the simplified bot."""
+    # Load storage data
+    Storage.load_from_file()
+    logger.info("📂 Данные загружены из файлов")
+    
     # Create the Application and pass it your bot's token
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 

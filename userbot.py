@@ -33,11 +33,18 @@ class UserBot:
         if not all([self.api_id, self.api_hash]):
             logger.warning("TELEGRAM_API_ID или TELEGRAM_API_HASH не установлены. Userbot функциональность отключена.")
             return
+        
+        # Проверяем корректность api_id
+        try:
+            api_id_int = int(self.api_id)
+        except (ValueError, TypeError):
+            logger.error(f"TELEGRAM_API_ID должен быть числом, получено: {self.api_id}")
+            return
             
         # Создаем клиент Pyrogram
         self.app = Client(
             "userbot_session",
-            api_id=int(self.api_id),
+            api_id=api_id_int,
             api_hash=self.api_hash,
             phone_number=self.phone_number,
             workdir="."
