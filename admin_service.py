@@ -322,13 +322,31 @@ class AdminService:
         if len(post.message_text) > 500:
             notification_text += "..."
         
+        # Добавляем inline кнопки для модерации
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Одобрить", callback_data=f"admin_approve_{post.post_id}"),
+                InlineKeyboardButton("❌ Отклонить", callback_data=f"admin_reject_{post.post_id}")
+            ]
+        ]
+        
+        if len(post.message_text) > 500:
+            keyboard.append([
+                InlineKeyboardButton("📄 Полный текст", callback_data=f"admin_full_{post.post_id}")
+            ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
         # Отправляем уведомления всем администраторам
         for admin_id in config.admin_ids:
             try:
                 await bot.send_message(
                     chat_id=admin_id,
                     text=notification_text,
-                    parse_mode=ParseMode.HTML
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=reply_markup
                 )
                 logger.info(f"Уведомление о посте {post.post_id} отправлено администратору {admin_id}")
             except TelegramError as e:
