@@ -235,9 +235,14 @@ class UserBot:
     async def stop(self):
         """Остановка userbot"""
         if self.app and self.is_running:
-            await self.app.stop()
-            self.is_running = False
-            logger.info("🛑 Userbot остановлен")
+            try:
+                # Останавливаем клиент
+                await self.app.stop()
+                self.is_running = False
+                logger.info("🛑 Userbot остановлен")
+            except Exception as e:
+                logger.error(f"Ошибка при остановке userbot: {e}")
+                self.is_running = False
     
     def reset_session(self):
         """Сброс сессии userbot (удаление файла сессии)"""

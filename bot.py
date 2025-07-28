@@ -2743,6 +2743,9 @@ async def handle_message_forwarded(update: Update, context: CallbackContext) -> 
 
 def main() -> None:
     """Start the simplified bot."""
+    import signal
+    import sys
+    
     # Load storage data
     Storage.load_from_file()
     logger.info("📂 Данные загружены из файлов")
@@ -2768,6 +2771,35 @@ def main() -> None:
     # Make application globally available for userbot
     globals()['application'] = application
     
+    # Store userbot task for proper cleanup
+    userbot_task = None
+    
+    # Signal handler for graceful shutdown
+    def signal_handler(signum, frame):
+        logger.info(f"Получен сигнал {signum}, завершение работы...")
+        
+        # Stop userbot if running
+        if USERBOT_ENABLED and userbot_task:
+            try:
+                from userbot import stop_userbot
+                asyncio.create_task(stop_userbot())
+                logger.info("🤖 Userbot остановлен")
+            except Exception as e:
+                logger.error(f"Ошибка остановки userbot: {e}")
+        
+        # Save data before exit
+        try:
+            Storage.save_to_file()
+            logger.info("📂 Данные сохранены")
+        except Exception as e:
+            logger.error(f"Ошибка сохранения данных: {e}")
+        
+        sys.exit(0)
+    
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     logger.info("🚀 Упрощенный бот запущен!")
     
     # Запускаем userbot в фоновом режиме
@@ -2786,14 +2818,37 @@ def main() -> None:
             
             # Запускаем userbot в отдельной задаче
             loop = asyncio.get_event_loop()
-            loop.create_task(start_userbot_task())
+            userbot_task = loop.create_task(start_userbot_task())
             logger.info("🤖 Userbot запускается в фоновом режиме...")
             
         except Exception as e:
             logger.error(f"Не удалось запустить userbot: {e}")
     
-    # Start the Bot
-    application.run_polling()
+    try:
+        # Start the Bot
+        application.run_polling()
+    except KeyboardInterrupt:
+        logger.info("Получен сигнал прерывания, завершение работы...")
+    except Exception as e:
+        logger.error(f"Ошибка в основном цикле бота: {e}")
+    finally:
+        # Cleanup
+        if USERBOT_ENABLED and userbot_task:
+            try:
+                from userbot import stop_userbot
+                asyncio.create_task(stop_userbot())
+                logger.info("🤖 Userbot остановлен")
+            except Exception as e:
+                logger.error(f"Ошибка остановки userbot: {e}")
+        
+        # Save data
+        try:
+            Storage.save_to_file()
+            logger.info("📂 Данные сохранены")
+        except Exception as e:
+            logger.error(f"Ошибка сохранения данных: {e}")
+        
+        logger.info("Бот завершил работу")
 
 if __name__ == '__main__':
     main()
