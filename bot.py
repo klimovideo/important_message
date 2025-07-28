@@ -30,20 +30,26 @@ def get_main_reply_keyboard(user_id: int) -> ReplyKeyboardMarkup:
     """Создает основную клавиатуру с reply кнопками"""
     is_admin = Storage.is_admin(user_id)
     
-    keyboard = [
-        ["📊 Мониторинг", "📝 Предложить пост"],
-        ["⚙️ Настройки", "📈 Статистика"],
-    ]
-    
-    if USERBOT_ENABLED:
-        keyboard.append(["🤖 Userbot", "🔑 Ключевые слова"])
-    else:
-        keyboard.append(["🔑 Ключевые слова"])
-    
     if is_admin:
+        # Полное меню для администраторов
+        keyboard = [
+            ["📊 Мониторинг", "📝 Предложить пост"],
+            ["⚙️ Настройки", "📈 Статистика"],
+        ]
+        
+        if USERBOT_ENABLED:
+            keyboard.append(["🤖 Userbot", "🔑 Ключевые слова"])
+        else:
+            keyboard.append(["🔑 Ключевые слова"])
+        
         keyboard.append(["🔧 Администрирование"])
-    
-    keyboard.append(["ℹ️ Справка"])
+        keyboard.append(["ℹ️ Справка"])
+    else:
+        # Ограниченное меню для обычных пользователей
+        keyboard = [
+            ["📝 Предложить пост", "📢 Предложить канал"],
+            ["ℹ️ Справка"]
+        ]
     
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
@@ -126,6 +132,10 @@ async def start_command(update: Update, context: CallbackContext) -> None:
     user_id = update.effective_user.id
     user = Storage.get_user(user_id)
     
+    # Сбрасываем состояние пользователя
+    user.current_state = None
+    Storage.update_user(user)
+    
     welcome_text = (
         f"🤖 <b>Добро пожаловать!</b>\n\n"
         f"Я анализирую сообщения из ваших чатов и каналов с помощью ИИ "
@@ -148,6 +158,12 @@ async def start_command(update: Update, context: CallbackContext) -> None:
 async def menu_command(update: Update, context: CallbackContext) -> None:
     """Show main menu."""
     user_id = update.effective_user.id
+    
+    # Сбрасываем состояние пользователя
+    user = Storage.get_user(user_id)
+    user.current_state = None
+    Storage.update_user(user)
+    
     reply_markup = get_main_reply_keyboard(user_id)
     
     await update.message.reply_text(
@@ -251,30 +267,56 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
     
     # Main menu buttons
     if text == "📊 Мониторинг":
-        await show_monitoring_interface(update, context, user)
+        if Storage.is_admin(user_id):
+            await show_monitoring_interface(update, context, user)
+        else:
+            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
         return True
     
     elif text == "📝 Предложить пост":
         await show_submit_post_interface(update, context)
         return True
     
+    elif text == "📢 Предложить канал":
+        await update.message.reply_text(
+            "📢 <b>Предложение канала для мониторинга</b>\n\n"
+            "💡 <b>Отправьте:</b>\n"
+            "• Username канала (например: @my_channel)\n"
+            "• Ссылку на канал (например: https://t.me/my_channel)\n"
+            "• ID канала (например: -1001234567890)\n\n"
+            "🔧 <b>Ваше предложение будет рассмотрено администратором.</b>",
+            parse_mode=ParseMode.HTML
+        )
+        return True
+    
     elif text == "⚙️ Настройки":
-        await show_settings_interface(update, context, user)
+        if Storage.is_admin(user_id):
+            await show_settings_interface(update, context, user)
+        else:
+            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
         return True
     
     elif text == "📈 Статистика":
-        await show_statistics_interface(update, context, user)
+        if Storage.is_admin(user_id):
+            await show_statistics_interface(update, context, user)
+        else:
+            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
         return True
     
     elif text == "🤖 Userbot":
-        if USERBOT_ENABLED:
+        if USERBOT_ENABLED and Storage.is_admin(user_id):
             await show_userbot_interface(update, context)
-        else:
+        elif not USERBOT_ENABLED:
             await update.message.reply_text("❌ Userbot отключен в конфигурации.")
+        else:
+            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
         return True
     
     elif text == "🔑 Ключевые слова":
-        await show_keywords_interface(update, context, user)
+        if Storage.is_admin(user_id):
+            await show_keywords_interface(update, context, user)
+        else:
+            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
         return True
     
     elif text == "🔧 Администрирование":
@@ -294,7 +336,7 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
         return True
     
     # Admin buttons
-    elif text == "📝 Модерация постов":
+    elif text == "�� Модерация постов":
         if Storage.is_admin(user_id):
             await show_posts_moderation(update, context)
         else:
@@ -374,6 +416,11 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
     
     # Back to main menu
     elif text == "🔙 Главное меню":
+        # Сбрасываем состояние пользователя
+        user = Storage.get_user(user_id)
+        user.current_state = None
+        Storage.update_user(user)
+        
         reply_markup = get_main_reply_keyboard(user_id)
         await update.message.reply_text(
             "🎛️ <b>Главное меню</b>\n\nВыберите нужный раздел:",
@@ -439,7 +486,7 @@ async def show_submit_post_interface(update: Update, context: CallbackContext) -
         f"• Перешлите интересное сообщение боту\n"
         f"• Нажмите кнопку для отправки на модерацию\n\n"
         f"3️⃣ <b>Команда:</b>\n"
-        f"• /submit_post <текст поста>\n\n"
+        f"• /submit_post текст поста\n\n"
         f"💡 <b>Ваш пост будет:</b>\n"
         f"• Оценен ИИ на важность\n"
         f"• Рассмотрен администраторами\n"
@@ -804,6 +851,19 @@ async def show_channel_config(update: Update, context: CallbackContext) -> None:
     channel_info = f"<code>{html.escape(str(config.publish_channel_id))}</code>" if config.publish_channel_id else "Не настроен"
     username_info = f"@{html.escape(config.publish_channel_username)}" if config.publish_channel_username else "Не указан"
     
+    # Устанавливаем состояние для администратора
+    if hasattr(update, 'callback_query') and update.callback_query:
+        user_id = update.callback_query.from_user.id
+    elif hasattr(update, 'effective_user') and update.effective_user:
+        user_id = update.effective_user.id
+    else:
+        user_id = None
+        
+    if user_id:
+        user = Storage.get_user(user_id)
+        user.current_state = "channel_setup"
+        Storage.update_user(user)
+    
     # Получаем список каналов, где бот является администратором
     admin_channels = await get_bot_admin_channels(context.bot)
     
@@ -842,12 +902,14 @@ async def show_channel_config(update: Update, context: CallbackContext) -> None:
         f"💡 <b>Или отправьте вручную:</b>\n"
         f"• ID канала (например: -1001234567890)\n"
         f"• Username канала (например: @my_channel)\n"
-        f"• Ссылку на канал (например: https://t.me/my_channel)\n\n"
-        f"🔧 <b>Команда:</b> /admin_channel &lt;ID, @username или ссылка&gt;"
+        f"• Ссылку на канал (например: https://t.me/my_channel)\n"
+        f"• Короткую ссылку (например: t.me/my_channel)\n\n"
+        f"🔧 <b>Просто отправьте любой из этих форматов следующим сообщением!</b>"
     )
     
     keyboard.append([InlineKeyboardButton("🔄 Обновить список", callback_data="refresh_channels")])
     keyboard.append([InlineKeyboardButton("🗑️ Очистить настройки", callback_data="admin_clear_channel")])
+    keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel_channel_setup")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -861,22 +923,49 @@ async def show_admins_management(update: Update, context: CallbackContext) -> No
     """Show admins management interface."""
     config = Storage.bot_config
     
+    # Устанавливаем состояние для администратора
+    user_id = update.effective_user.id
+    user = Storage.get_user(user_id)
+    user.current_state = "admin_management"
+    Storage.update_user(user)
+    
     admins_text = (
         f"👥 <b>Управление администраторами</b>\n\n"
         f"📊 <b>Всего администраторов:</b> {len(config.admin_ids)}\n\n"
         f"📋 <b>Список администраторов:</b>\n"
     )
     
+    # Получаем информацию о каждом администраторе
     for i, admin_id in enumerate(config.admin_ids, 1):
-        admins_text += f"{i}. {admin_id}\n"
+        try:
+            # Пытаемся получить информацию о пользователе
+            chat_member = await context.bot.get_chat(admin_id)
+            username = chat_member.username
+            first_name = chat_member.first_name
+            last_name = chat_member.last_name
+            
+            # Формируем отображаемое имя
+            if username:
+                display_name = f"@{username}"
+            elif first_name:
+                display_name = f"{first_name}"
+                if last_name:
+                    display_name += f" {last_name}"
+            else:
+                display_name = "Неизвестный пользователь"
+            
+            admins_text += f"{i}. {display_name} (ID: {admin_id})\n"
+        except Exception as e:
+            # Если не удалось получить информацию, показываем только ID
+            admins_text += f"{i}. ID: {admin_id} (не удалось получить информацию)\n"
     
     admins_text += (
         f"\n💡 <b>Для добавления/удаления отправьте:</b>\n"
         f"• <code>+123456789</code> - добавить админа\n"
         f"• <code>-123456789</code> - удалить админа\n\n"
         f"🔧 <b>Или используйте команды:</b>\n"
-        f"/admin_add <user_id>\n"
-        f"/admin_remove <user_id>"
+        f"/admin_add user_id\n"
+        f"/admin_remove user_id"
     )
     
     await update.message.reply_text(
@@ -1013,6 +1102,12 @@ async def handle_userbot_reset_session(update: Update, context: CallbackContext)
 
 async def show_userbot_join_interface(update: Update, context: CallbackContext) -> None:
     """Show userbot join interface."""
+    # Устанавливаем состояние пользователя
+    user_id = update.effective_user.id
+    user = Storage.get_user(user_id)
+    user.current_state = "userbot_join"
+    Storage.update_user(user)
+    
     join_text = (
         f"➕ <b>Присоединение к каналу/чату</b>\n\n"
         f"💡 <b>Отправьте ссылку на канал или чат:</b>\n"
@@ -1133,29 +1228,34 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
     """Handle text messages for various inputs."""
     user_id = update.effective_user.id
     text = update.message.text.strip()
+    user = Storage.get_user(user_id)  # Получаем пользователя в начале функции
     
     # Handle keyword additions
     if text.startswith('+') and len(text) > 1:
-        keyword = text[1:].strip().lower()
-        user = Storage.get_user(user_id)
-        if keyword not in user.keywords:
-            user.keywords.append(keyword)
-            Storage.update_user(user)
-            await update.message.reply_text(f"✅ Добавлено важное слово: <b>{html.escape(keyword)}</b>", parse_mode=ParseMode.HTML)
+        if Storage.is_admin(user_id):
+            keyword = text[1:].strip().lower()
+            if keyword not in user.keywords:
+                user.keywords.append(keyword)
+                Storage.update_user(user)
+                await update.message.reply_text(f"✅ Добавлено важное слово: <b>{html.escape(keyword)}</b>", parse_mode=ParseMode.HTML)
+            else:
+                await update.message.reply_text(f"⚠️ Слово '<b>{html.escape(keyword)}</b>' уже есть в списке важных.", parse_mode=ParseMode.HTML)
         else:
-            await update.message.reply_text(f"⚠️ Слово '<b>{html.escape(keyword)}</b>' уже есть в списке важных.", parse_mode=ParseMode.HTML)
+            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
         return
     
     # Handle keyword exclusions
     elif text.startswith('-') and len(text) > 1 and not text[1:].isdigit():
-        keyword = text[1:].strip().lower()
-        user = Storage.get_user(user_id)
-        if keyword not in user.exclude_keywords:
-            user.exclude_keywords.append(keyword)
-            Storage.update_user(user)
-            await update.message.reply_text(f"✅ Добавлено исключаемое слово: <b>{html.escape(keyword)}</b>", parse_mode=ParseMode.HTML)
+        if Storage.is_admin(user_id):
+            keyword = text[1:].strip().lower()
+            if keyword not in user.exclude_keywords:
+                user.exclude_keywords.append(keyword)
+                Storage.update_user(user)
+                await update.message.reply_text(f"✅ Добавлено исключаемое слово: <b>{html.escape(keyword)}</b>", parse_mode=ParseMode.HTML)
+            else:
+                await update.message.reply_text(f"⚠️ Слово '<b>{html.escape(keyword)}</b>' уже есть в списке исключаемых.", parse_mode=ParseMode.HTML)
         else:
-            await update.message.reply_text(f"⚠️ Слово '<b>{html.escape(keyword)}</b>' уже есть в списке исключаемых.", parse_mode=ParseMode.HTML)
+            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
         return
     
     # Handle admin addition (for admins only)
@@ -1164,7 +1264,26 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
             admin_id = int(text[1:])
             if admin_id not in Storage.bot_config.admin_ids:
                 Storage.add_admin(admin_id)
-                await update.message.reply_text(f"✅ Пользователь {admin_id} добавлен в администраторы.")
+                
+                # Получаем информацию о добавленном пользователе
+                try:
+                    chat_member = await context.bot.get_chat(admin_id)
+                    username = chat_member.username
+                    first_name = chat_member.first_name
+                    last_name = chat_member.last_name
+                    
+                    if username:
+                        display_name = f"@{username}"
+                    elif first_name:
+                        display_name = f"{first_name}"
+                        if last_name:
+                            display_name += f" {last_name}"
+                    else:
+                        display_name = "Неизвестный пользователь"
+                    
+                    await update.message.reply_text(f"✅ Пользователь {display_name} (ID: {admin_id}) добавлен в администраторы.")
+                except Exception:
+                    await update.message.reply_text(f"✅ Пользователь {admin_id} добавлен в администраторы.")
             else:
                 await update.message.reply_text(f"⚠️ Пользователь {admin_id} уже является администратором.")
         else:
@@ -1180,39 +1299,199 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
                 return
             if admin_id in Storage.bot_config.admin_ids:
                 Storage.remove_admin(admin_id)
-                await update.message.reply_text(f"✅ Пользователь {admin_id} удален из администраторов.")
+                
+                # Получаем информацию об удаленном пользователе
+                try:
+                    chat_member = await context.bot.get_chat(admin_id)
+                    username = chat_member.username
+                    first_name = chat_member.first_name
+                    last_name = chat_member.last_name
+                    
+                    if username:
+                        display_name = f"@{username}"
+                    elif first_name:
+                        display_name = f"{first_name}"
+                        if last_name:
+                            display_name += f" {last_name}"
+                    else:
+                        display_name = "Неизвестный пользователь"
+                    
+                    await update.message.reply_text(f"✅ Пользователь {display_name} (ID: {admin_id}) удален из администраторов.")
+                except Exception:
+                    await update.message.reply_text(f"✅ Пользователь {admin_id} удален из администраторов.")
             else:
                 await update.message.reply_text(f"❌ Пользователь {admin_id} не является администратором.")
         else:
             await update.message.reply_text("❌ У вас нет прав для удаления администраторов.")
         return
     
-    # Handle channel configuration (for admins only)
-    elif (text.startswith('@') or text.lstrip('-').isdigit() or 't.me/' in text) and Storage.is_admin(user_id):
+    # Handle admin management in admin interface
+    elif Storage.is_admin(user_id) and user.current_state == "admin_management":
+        if text.startswith('+') and text[1:].isdigit():
+            admin_id = int(text[1:])
+            if admin_id not in Storage.bot_config.admin_ids:
+                Storage.add_admin(admin_id)
+                
+                # Получаем информацию о добавленном пользователе
+                try:
+                    chat_member = await context.bot.get_chat(admin_id)
+                    username = chat_member.username
+                    first_name = chat_member.first_name
+                    last_name = chat_member.last_name
+                    
+                    if username:
+                        display_name = f"@{username}"
+                    elif first_name:
+                        display_name = f"{first_name}"
+                        if last_name:
+                            display_name += f" {last_name}"
+                    else:
+                        display_name = "Неизвестный пользователь"
+                    
+                    await update.message.reply_text(f"✅ Пользователь {display_name} (ID: {admin_id}) добавлен в администраторы.")
+                except Exception:
+                    await update.message.reply_text(f"✅ Пользователь {admin_id} добавлен в администраторы.")
+            else:
+                await update.message.reply_text(f"⚠️ Пользователь {admin_id} уже является администратором.")
+        elif text.startswith('-') and text[1:].isdigit():
+            admin_id = int(text[1:])
+            if admin_id == user_id:
+                await update.message.reply_text("❌ Нельзя удалить себя из администраторов.")
+            elif admin_id in Storage.bot_config.admin_ids:
+                Storage.remove_admin(admin_id)
+                
+                # Получаем информацию об удаленном пользователе
+                try:
+                    chat_member = await context.bot.get_chat(admin_id)
+                    username = chat_member.username
+                    first_name = chat_member.first_name
+                    last_name = chat_member.last_name
+                    
+                    if username:
+                        display_name = f"@{username}"
+                    elif first_name:
+                        display_name = f"{first_name}"
+                        if last_name:
+                            display_name += f" {last_name}"
+                    else:
+                        display_name = "Неизвестный пользователь"
+                    
+                    await update.message.reply_text(f"✅ Пользователь {display_name} (ID: {admin_id}) удален из администраторов.")
+                except Exception:
+                    await update.message.reply_text(f"✅ Пользователь {admin_id} удален из администраторов.")
+            else:
+                await update.message.reply_text(f"❌ Пользователь {admin_id} не является администратором.")
+        else:
+            await update.message.reply_text(
+                "❌ Неверный формат. Используйте:\n"
+                "• <code>+123456789</code> - добавить админа\n"
+                "• <code>-123456789</code> - удалить админа",
+                parse_mode=ParseMode.HTML
+            )
+        return
+    
+    # Handle channel configuration for admins (highest priority for admins)
+    if Storage.is_admin(user_id) and user.current_state == "channel_setup" and (
+        text.startswith('@') or 
+        text.lstrip('-').isdigit() or 
+        't.me/' in text or
+        text.startswith('http')
+    ):
         await handle_channel_config_text(update, context, text)
         return
     
-    # Handle userbot join links
-    elif ('t.me/' in text or text.startswith('@')) and USERBOT_ENABLED:
-        await handle_userbot_join_text(update, context, text)
+    # Handle admin threshold setup
+    if Storage.is_admin(user_id) and user.current_state == "admin_threshold_setup" and text.replace('.', '').isdigit() and 0 <= float(text) <= 1:
+        threshold = float(text)
+        config = Storage.bot_config
+        config.importance_threshold = threshold
+        Storage.update_config(config)
+        
+        # Сбрасываем состояние пользователя
+        user.current_state = None
+        Storage.update_user(user)
+        
+        await update.message.reply_text(
+            f"✅ <b>Глобальный порог важности установлен:</b> {threshold}\n\n"
+            f"💡 Теперь все пользователи будут получать уведомления о сообщениях с важностью выше {threshold}",
+            parse_mode=ParseMode.HTML
+        )
         return
+    
+    # Handle userbot join links (priority for userbot functionality)
+    if ('t.me/' in text or text.startswith('@')) and USERBOT_ENABLED:
+        # Если пользователь в состоянии userbot_join и является админом
+        if user.current_state == "userbot_join" and Storage.is_admin(user_id):
+            await handle_userbot_join_text(update, context, text)
+            return
+        # Для обычных пользователей - не обрабатываем как userbot join
+        elif not Storage.is_admin(user_id):
+            # Обработка будет в следующем блоке для предложений каналов
+            pass
     
     # Handle userbot leave (numeric ID)
     elif text.lstrip('-').isdigit() and USERBOT_ENABLED and len(text) > 5:
-        await handle_userbot_leave_text(update, context, text)
+        if Storage.is_admin(user_id):
+            await handle_userbot_leave_text(update, context, text)
+        else:
+            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
         return
     
     # Handle threshold setting
     elif text.replace('.', '').isdigit() and 0 <= float(text) <= 1:
-        threshold = float(text)
-        user = Storage.get_user(user_id)
-        user.importance_threshold = threshold
-        Storage.update_user(user)
-        await update.message.reply_text(
-            f"✅ <b>Порог важности установлен:</b> {threshold}\n\n"
-            f"💡 Теперь вы будете получать уведомления о сообщениях с важностью выше {threshold}",
-            parse_mode=ParseMode.HTML
-        )
+        if Storage.is_admin(user_id):
+            threshold = float(text)
+            user = Storage.get_user(user_id)
+            user.importance_threshold = threshold
+            Storage.update_user(user)
+            await update.message.reply_text(
+                f"✅ <b>Порог важности установлен:</b> {threshold}\n\n"
+                f"💡 Теперь вы будете получать уведомления о сообщениях с важностью выше {threshold}",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
+        return
+    
+    # Handle channel suggestions from regular users
+    elif not Storage.is_admin(user_id) and (
+        text.startswith('@') or 
+        text.lstrip('-').isdigit() or 
+        't.me/' in text or
+        text.startswith('http')
+    ):
+        # Уведомляем администраторов о предложении канала
+        admin_ids = Storage.bot_config.admin_ids
+        if admin_ids:
+            suggestion_text = (
+                f"📢 <b>Предложение канала для мониторинга</b>\n\n"
+                f"👤 <b>От пользователя:</b> {user_id}\n"
+                f"📝 <b>Канал:</b> {html.escape(text)}\n"
+                f"📅 <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
+                f"💡 <b>Для добавления канала в мониторинг используйте админ-панель.</b>"
+            )
+            
+            for admin_id in admin_ids:
+                try:
+                    await context.bot.send_message(
+                        chat_id=admin_id,
+                        text=suggestion_text,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Не удалось отправить уведомление админу {admin_id}: {e}")
+            
+            await update.message.reply_text(
+                "✅ <b>Предложение канала отправлено администраторам!</b>\n\n"
+                "💡 Мы рассмотрим ваше предложение и добавим канал в мониторинг, если он подходит.",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await update.message.reply_text(
+                "❌ <b>Нет доступных администраторов</b>\n\n"
+                "К сожалению, в данный момент нет администраторов для рассмотрения вашего предложения.",
+                parse_mode=ParseMode.HTML
+            )
         return
     
     # If nothing matched, treat as reply button
@@ -1226,92 +1505,183 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
 async def handle_channel_config_text(update: Update, context: CallbackContext, text: str) -> None:
     """Handle channel configuration from text input."""
     config = Storage.bot_config
+    user_id = update.effective_user.id
+    
+    # Сбрасываем состояние пользователя
+    user = Storage.get_user(user_id)
+    user.current_state = None
+    Storage.update_user(user)
     
     # Helper function to extract username from link
     def extract_username_from_link(link: str) -> str:
         link = link.strip()
+        
+        # Если уже username с @
         if link.startswith('@'):
             return link
+            
+        # Различные форматы ссылок t.me
         if 't.me/' in link:
+            # Извлекаем часть после t.me/
             username = link.split('t.me/')[-1]
+            # Убираем параметры после ?
             username = username.split('?')[0]
+            # Убираем слеши в конце
             username = username.rstrip('/')
             return f"@{username}"
-        if link.startswith('https://t.me/'):
-            username = link.replace('https://t.me/', '')
-            username = username.split('?')[0]
-            username = username.rstrip('/')
-            return f"@{username}"
-        if not link.startswith('@') and not link.startswith('http'):
+        
+        # Если это просто username без @
+        if not link.startswith('@') and not link.startswith('http') and not link.lstrip('-').isdigit():
             return f"@{link}"
+            
         return link
     
-    # Process different formats
-    if text.startswith('@'):
-        # Username format
-        config.publish_channel_username = text[1:]  # Remove @
+    async def check_bot_permissions(chat_id):
+        """Проверяет права бота в канале"""
         try:
-            # Try to get channel info to validate and get ID
-            chat = await context.bot.get_chat(text)
-            config.publish_channel_id = chat.id
-            Storage.update_config(config)
-            
-            await update.message.reply_text(
-                f"✅ <b>Канал настроен успешно!</b>\n\n"
-                f"📋 <b>ID чата:</b> {chat.id}\n"
-                f"🏷️ <b>Username:</b> @{html.escape(config.publish_channel_username)}\n"
-                f"📝 <b>Название:</b> {html.escape(chat.title)}",
-                parse_mode=ParseMode.HTML
-            )
-        except Exception as e:
-            await update.message.reply_text(f"❌ Ошибка: {html.escape(str(e))}")
+            bot_info = await context.bot.get_me()
+            member = await context.bot.get_chat_member(chat_id, bot_info.id)
+            return member.status in ['administrator', 'creator']
+        except Exception:
+            return False
     
-    elif 't.me/' in text:
-        # Link format
-        username = extract_username_from_link(text)
-        config.publish_channel_username = username[1:]  # Remove @
+    # Process different formats
+    if text.startswith('@') or 't.me/' in text or text.startswith('http'):
+        # Username or link format
+        if 't.me/' in text or text.startswith('http'):
+            username = extract_username_from_link(text)
+        else:
+            username = text if text.startswith('@') else f"@{text}"
+            
         try:
             # Try to get channel info to validate and get ID
             chat = await context.bot.get_chat(username)
+            
+            # Проверяем права бота
+            has_permissions = await check_bot_permissions(chat.id)
+            
+            if not has_permissions:
+                await update.message.reply_text(
+                    f"⚠️ <b>Внимание!</b> Бот не является администратором в канале.\n\n"
+                    f"📝 <b>Название:</b> {html.escape(chat.title)}\n"
+                    f"📋 <b>ID:</b> {chat.id}\n\n"
+                    f"🔧 <b>Для публикации постов добавьте бота как администратора с правами:</b>\n"
+                    f"• Отправка сообщений\n"
+                    f"• Редактирование сообщений\n\n"
+                    f"❓ <b>Всё равно сохранить этот канал?</b>",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([
+                        [
+                            InlineKeyboardButton("✅ Да, сохранить", callback_data=f"force_set_channel_{chat.id}"),
+                            InlineKeyboardButton("❌ Отмена", callback_data="cancel_channel_setup")
+                        ]
+                    ])
+                )
+                return
+            
+            # Сохраняем конфигурацию
             config.publish_channel_id = chat.id
+            config.publish_channel_username = chat.username
             Storage.update_config(config)
             
             await update.message.reply_text(
-                f"✅ <b>Канал настроен успешно!</b>\n\n"
-                f"📋 <b>ID чата:</b> {chat.id}\n"
-                f"🏷️ <b>Username:</b> @{html.escape(config.publish_channel_username)}\n"
-                f"📝 <b>Название:</b> {html.escape(chat.title)}",
+                f"✅ <b>Канал публикации настроен успешно!</b>\n\n"
+                f"📝 <b>Название:</b> {html.escape(chat.title)}\n"
+                f"📋 <b>ID:</b> {chat.id}\n"
+                f"🏷️ <b>Username:</b> @{html.escape(chat.username or 'отсутствует')}\n"
+                f"👤 <b>Участников:</b> {getattr(chat, 'member_count', 'неизвестно')}\n\n"
+                f"🤖 <b>Бот имеет права администратора</b> ✅\n"
+                f"🚀 <b>Готов к публикации постов!</b>",
                 parse_mode=ParseMode.HTML
             )
+            
         except Exception as e:
-            await update.message.reply_text(f"❌ Ошибка: {html.escape(str(e))}")
+            error_msg = str(e).lower()
+            if "chat not found" in error_msg:
+                await update.message.reply_text(
+                    f"❌ <b>Канал не найден</b>\n\n"
+                    f"🔗 <b>Проверьте:</b> {html.escape(text)}\n\n"
+                    f"💡 <b>Возможные причины:</b>\n"
+                    f"• Неправильная ссылка или username\n"
+                    f"• Канал приватный и бот не добавлен\n"
+                    f"• Канал не существует",
+                    parse_mode=ParseMode.HTML
+                )
+            elif "forbidden" in error_msg:
+                await update.message.reply_text(
+                    f"❌ <b>Нет доступа к каналу</b>\n\n"
+                    f"🔗 <b>Канал:</b> {html.escape(text)}\n\n"
+                    f"🔧 <b>Решение:</b>\n"
+                    f"1. Добавьте бота в канал как администратора\n"
+                    f"2. Дайте права на отправку сообщений\n"
+                    f"3. Попробуйте снова",
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await update.message.reply_text(
+                    f"❌ <b>Ошибка настройки канала</b>\n\n"
+                    f"🔗 <b>Ввод:</b> {html.escape(text)}\n"
+                    f"📋 <b>Ошибка:</b> {html.escape(str(e))}\n\n"
+                    f"💡 <b>Попробуйте:</b>\n"
+                    f"• Проверить правильность ссылки\n"
+                    f"• Убедиться что бот добавлен в канал\n"
+                    f"• Использовать ID канала вместо ссылки",
+                    parse_mode=ParseMode.HTML
+                )
     
     elif text.lstrip('-').isdigit():
         # ID format
         channel_id = int(text)
-        config.publish_channel_id = channel_id
         
         try:
             # Try to get channel info
             chat = await context.bot.get_chat(channel_id)
+            
+            # Проверяем права бота
+            has_permissions = await check_bot_permissions(channel_id)
+            
+            config.publish_channel_id = channel_id
             if chat.username:
                 config.publish_channel_username = chat.username
             Storage.update_config(config)
             
+            permission_status = "✅ Бот имеет права администратора" if has_permissions else "⚠️ Бот НЕ является администратором"
+            
             await update.message.reply_text(
                 f"✅ <b>Канал настроен успешно!</b>\n\n"
-                f"📋 <b>ID канала:</b> {channel_id}\n"
-                f"📝 <b>Название:</b> {html.escape(chat.title)}",
+                f"�� <b>Название:</b> {html.escape(chat.title)}\n"
+                f"📋 <b>ID:</b> {channel_id}\n"
+                f"🏷️ <b>Username:</b> @{html.escape(chat.username or 'отсутствует')}\n\n"
+                f"🤖 <b>Статус бота:</b> {permission_status}\n\n"
+                f"{'🚀 Готов к публикации!' if has_permissions else '🔧 Добавьте бота как администратора для публикации'}",
                 parse_mode=ParseMode.HTML
             )
+            
         except Exception as e:
             # Save ID even if we can't get info
+            config.publish_channel_id = channel_id
             Storage.update_config(config)
             await update.message.reply_text(
-                f"⚠️ <b>Канал настроен</b>, но не удалось получить информацию: {html.escape(str(e))}\n\n"
-                f"📋 <b>ID канала:</b> {channel_id}",
+                f"⚠️ <b>Канал настроен</b>, но не удалось получить полную информацию\n\n"
+                f"📋 <b>ID канала:</b> {channel_id}\n"
+                f"📋 <b>Ошибка:</b> {html.escape(str(e))}\n\n"
+                f"💡 <b>Убедитесь что:</b>\n"
+                f"• Бот добавлен в канал как администратор\n"
+                f"• ID канала правильный\n"
+                f"• У бота есть права на отправку сообщений",
                 parse_mode=ParseMode.HTML
             )
+    else:
+        await update.message.reply_text(
+            f"❌ <b>Неправильный формат</b>\n\n"
+            f"📝 <b>Поддерживаемые форматы:</b>\n"
+            f"• ID канала: <code>-1001234567890</code>\n"
+            f"• Username: <code>@my_channel</code>\n"
+            f"• Полная ссылка: <code>https://t.me/my_channel</code>\n"
+            f"• Короткая ссылка: <code>t.me/my_channel</code>\n\n"
+            f"🔗 <b>Ваш ввод:</b> {html.escape(text)}",
+            parse_mode=ParseMode.HTML
+        )
 
 async def handle_userbot_join_text(update: Update, context: CallbackContext, text: str) -> None:
     """Handle userbot join from text input."""
@@ -1321,12 +1691,45 @@ async def handle_userbot_join_text(update: Update, context: CallbackContext, tex
             await update.message.reply_text("❌ Сначала запустите userbot кнопкой '🚀 Запустить'")
             return
         
+        # Получаем информацию о канале/чате
+        chat_info = await userbot.get_chat_info(text)
+        if not chat_info:
+            await update.message.reply_text(
+                f"❌ <b>Не удалось получить информацию о канале</b>\n\n"
+                f"🔗 <b>Ссылка:</b> {text}\n"
+                f"💡 Проверьте корректность ссылки.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
         # Try to join the channel/chat
         result = await userbot.join_chat(text)
         if result:
+            # Добавляем канал в список мониторимых источников пользователя
+            user_id = update.effective_user.id
+            user = Storage.get_user(user_id)
+            
+            # Определяем тип источника и добавляем в соответствующий список
+            if chat_info['type'] == 'CHANNEL':
+                user.monitored_channels.add(chat_info['id'])
+                source_type = "канал"
+            else:
+                user.monitored_chats.add(chat_info['id'])
+                source_type = "чат"
+            
+            # Сбрасываем состояние пользователя
+            user.current_state = None
+            Storage.update_user(user)
+            
+            # Убеждаемся, что userbot также мониторит этот источник
+            userbot.add_monitoring_source(chat_info['id'])
+            
             await update.message.reply_text(
                 f"✅ <b>Успешно присоединился!</b>\n\n"
                 f"🔗 <b>Ссылка:</b> {text}\n"
+                f"📝 <b>Название:</b> {html.escape(chat_info['title'])}\n"
+                f"📊 <b>Тип:</b> {source_type}\n"
+                f"📋 <b>ID:</b> {chat_info['id']}\n"
                 f"🤖 Userbot начал мониторинг этого источника.",
                 parse_mode=ParseMode.HTML
             )
@@ -1350,8 +1753,21 @@ async def handle_userbot_leave_text(update: Update, context: CallbackContext, te
             return
         
         chat_id = int(text)
+        
+        # Удаляем из списка мониторимых источников пользователя
+        user_id = update.effective_user.id
+        user = Storage.get_user(user_id)
+        
+        # Удаляем из обоих списков (каналы и чаты)
+        user.monitored_channels.discard(chat_id)
+        user.monitored_chats.discard(chat_id)
+        Storage.update_user(user)
+        
         result = await userbot.leave_chat(chat_id)
         if result:
+            # Обновляем userbot мониторинг
+            userbot.remove_monitoring_source(chat_id)
+            
             await update.message.reply_text(
                 f"✅ <b>Успешно покинул источник</b>\n\n"
                 f"📋 <b>ID чата:</b> {chat_id}\n"
@@ -1542,6 +1958,27 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
                 f"✅ Требование одобрения {'включено' if config.require_admin_approval else 'отключено'}."
             )
     
+    elif data == "admin_threshold":
+        if Storage.is_admin(user_id):
+            # Устанавливаем состояние для администратора
+            user = Storage.get_user(user_id)
+            user.current_state = "admin_threshold_setup"
+            Storage.update_user(user)
+            
+            await query.edit_message_text(
+                "📊 <b>Изменение глобального порога важности</b>\n\n"
+                f"Текущий порог: <b>{Storage.bot_config.importance_threshold}</b>\n\n"
+                "💡 <b>Отправьте новое значение от 0.0 до 1.0</b>\n"
+                "Например: 0.7\n\n"
+                "🔍 <b>Рекомендации:</b>\n"
+                "• 0.3-0.5 - Только очень важные\n"
+                "• 0.5-0.7 - Важные (рекомендуется)\n"
+                "• 0.7-0.9 - Большинство сообщений",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await query.edit_message_text("❌ У вас нет прав администратора.")
+    
     elif data.startswith("admin_approve_"):
         if Storage.is_admin(user_id):
             post_id = data.replace("admin_approve_", "")
@@ -1593,10 +2030,21 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
             config.publish_channel_id = None
             config.publish_channel_username = None
             Storage.update_config(config)
+            
+            # Сбрасываем состояние пользователя
+            user = Storage.get_user(user_id)
+            user.current_state = None
+            Storage.update_user(user)
+            
             await query.edit_message_text("✅ Настройки канала публикации очищены.")
     
     elif data == "refresh_channels":
         if Storage.is_admin(user_id):
+            # Сохраняем состояние пользователя (не сбрасываем)
+            user = Storage.get_user(user_id)
+            user.current_state = "channel_setup"
+            Storage.update_user(user)
+            
             # Обновляем интерфейс с новым списком каналов
             await query.message.delete()
             await show_channel_config(query, context)
@@ -1606,6 +2054,11 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
             channel_id = int(data.replace("set_channel_", ""))
             config = Storage.bot_config
             config.publish_channel_id = channel_id
+            
+            # Сбрасываем состояние пользователя
+            user = Storage.get_user(user_id)
+            user.current_state = None
+            Storage.update_user(user)
             
             try:
                 # Получаем информацию о канале
@@ -1629,6 +2082,51 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
                     f"📋 <b>ID канала:</b> {channel_id}",
                     parse_mode=ParseMode.HTML
                 )
+    
+    elif data.startswith("force_set_channel_"):
+        if Storage.is_admin(user_id):
+            channel_id = int(data.replace("force_set_channel_", ""))
+            config = Storage.bot_config
+            config.publish_channel_id = channel_id
+            
+            # Сбрасываем состояние пользователя
+            user = Storage.get_user(user_id)
+            user.current_state = None
+            Storage.update_user(user)
+            
+            try:
+                chat = await context.bot.get_chat(channel_id)
+                if chat.username:
+                    config.publish_channel_username = chat.username
+                Storage.update_config(config)
+                
+                await query.edit_message_text(
+                    f"✅ <b>Канал сохранен принудительно</b>\n\n"
+                    f"📝 <b>Название:</b> {html.escape(chat.title)}\n"
+                    f"📋 <b>ID:</b> {channel_id}\n\n"
+                    f"⚠️ <b>Внимание:</b> Для публикации постов добавьте бота как администратора",
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception as e:
+                Storage.update_config(config)
+                await query.edit_message_text(
+                    f"✅ <b>Канал сохранен</b>\n\n"
+                    f"📋 <b>ID:</b> {channel_id}\n"
+                    f"⚠️ <b>Не удалось получить информацию:</b> {html.escape(str(e))}",
+                    parse_mode=ParseMode.HTML
+                )
+    
+    elif data == "cancel_channel_setup":
+        # Сбрасываем состояние пользователя
+        user = Storage.get_user(user_id)
+        user.current_state = None
+        Storage.update_user(user)
+        
+        await query.edit_message_text(
+            "❌ <b>Настройка канала отменена</b>\n\n"
+            "💡 Добавьте бота как администратора в канал и попробуйте снова.",
+            parse_mode=ParseMode.HTML
+        )
     
     # Post submission callbacks
     elif data == "confirm_submit_text":
@@ -1731,6 +2229,16 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
             user.monitored_chats.add(chat_id)
         
         Storage.update_user(user)
+        
+        # Синхронизируем с userbot если он запущен
+        if USERBOT_ENABLED:
+            try:
+                userbot = get_userbot()
+                if userbot.is_running:
+                    userbot.add_monitoring_source(chat_id)
+            except Exception as e:
+                logger.error(f"Ошибка синхронизации с userbot: {e}")
+        
         await query.edit_message_text(
             f"✅ <b>Источник добавлен в мониторинг!</b>\n\n"
             f"📊 {'Канал' if source_type == 'channel' else 'Чат'} (ID: {chat_id}) теперь отслеживается.\n\n"
@@ -1744,9 +2252,13 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
         source_type = parts[1]
         
         # Get the forwarded message from context
-        if update.effective_message and hasattr(update.effective_message, 'reply_to_message'):
+        forwarded_msg = None
+        if (update.effective_message and 
+            hasattr(update.effective_message, 'reply_to_message') and 
+            update.effective_message.reply_to_message):
             forwarded_msg = update.effective_message.reply_to_message
-            
+        
+        if forwarded_msg:
             # Create message object for analysis
             message = Message(
                 message_id=forwarded_msg.message_id,
@@ -2239,6 +2751,28 @@ def main() -> None:
     globals()['application'] = application
     
     logger.info("🚀 Упрощенный бот запущен!")
+    
+    # Запускаем userbot в фоновом режиме
+    if USERBOT_ENABLED:
+        try:
+            import asyncio
+            from userbot import start_userbot
+            
+            # Создаем задачу для запуска userbot
+            async def start_userbot_task():
+                try:
+                    # Передаем ссылку на основного бота
+                    await start_userbot(application.bot)
+                except Exception as e:
+                    logger.error(f"Ошибка запуска userbot: {e}")
+            
+            # Запускаем userbot в отдельной задаче
+            loop = asyncio.get_event_loop()
+            loop.create_task(start_userbot_task())
+            logger.info("🤖 Userbot запускается в фоновом режиме...")
+            
+        except Exception as e:
+            logger.error(f"Не удалось запустить userbot: {e}")
     
     # Start the Bot
     application.run_polling()

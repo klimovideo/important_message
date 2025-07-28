@@ -23,6 +23,7 @@ class UserBot:
         self.app = None
         self.is_running = False
         self.monitored_sources = set()  # Множество ID каналов/чатов для мониторинга
+        self.main_bot = None  # Ссылка на основного бота
         
         # Получаем учетные данные из переменных окружения
         self.api_id = os.getenv("TELEGRAM_API_ID")
@@ -93,7 +94,7 @@ class UserBot:
             chat_id=chat_id,
             chat_title=chat_title,
             text=message.text or message.caption or "",
-            date=datetime.fromtimestamp(message.date),
+            date=message.date if message.date else datetime.now(),
             is_channel=is_channel
         )
         
@@ -105,19 +106,40 @@ class UserBot:
         logger.info(f"Userbot получил сообщение из {chat_title}: {msg.text[:50]}...")
         
         # Анализируем сообщение для каждого пользователя
+        max_importance_score = 0
+        notified_users = []
+        
         for user in monitoring_users:
             try:
                 importance_score = evaluate_message_importance(msg, user)
                 msg.importance_score = importance_score
+                max_importance_score = max(max_importance_score, importance_score)
                 
                 logger.info(f"Userbot: оценка важности для пользователя {user.user_id}: {importance_score:.2f}")
                 
                 # Если сообщение достаточно важно, отправляем уведомление через основного бота
                 if importance_score >= user.importance_threshold:
                     await self.send_notification_to_user(user.user_id, msg)
+                    notified_users.append(user.user_id)
                     
             except Exception as e:
                 logger.error(f"Ошибка анализа сообщения userbot для пользователя {user.user_id}: {e}")
+        
+        # Если сообщение было важным для хотя бы одного пользователя, обрабатываем его для автопубликации
+        if notified_users and max_importance_score > 0:
+            msg.importance_score = max_importance_score
+            try:
+                # Импортируем здесь для избежания циклических импортов
+                from admin_service import AdminService
+                
+                if self.main_bot:
+                    published = await AdminService.process_important_message(self.main_bot, msg, max_importance_score)
+                    if published:
+                        logger.info(f"Важное сообщение из userbot автоматически опубликовано в канале (оценка: {max_importance_score:.2f})")
+                else:
+                    logger.error("Основной бот не установлен в userbot для автопубликации")
+            except Exception as e:
+                logger.error(f"Ошибка при обработке важного сообщения для автопубликации: {e}")
     
     async def send_notification_to_user(self, user_id: int, message: Message):
         """Отправка уведомления пользователю через основного бота"""
@@ -130,17 +152,15 @@ class UserBot:
         )
         
         try:
-            # Импортируем здесь, чтобы избежать циклических импортов
-            import bot
-            if hasattr(bot, 'application') and bot.application:
-                await bot.application.bot.send_message(
+            if self.main_bot:
+                await self.main_bot.send_message(
                     chat_id=user_id,
                     text=notification_text,
                     parse_mode='HTML'
                 )
                 logger.info(f"Userbot отправил уведомление пользователю {user_id}")
             else:
-                logger.error("Application не найден в bot модуле")
+                logger.error("Основной бот не установлен в userbot")
         except Exception as e:
             logger.error(f"Ошибка отправки уведомления userbot пользователю {user_id}: {e}")
     
@@ -158,6 +178,9 @@ class UserBot:
             # Получаем информацию о текущем пользователе
             me = await self.app.get_me()
             logger.info(f"Userbot работает как: {me.first_name} (@{me.username or 'без_username'})")
+            
+            # Синхронизируем источники мониторинга с данными пользователей
+            await self.sync_monitoring_sources()
             
             return True
             
@@ -179,6 +202,28 @@ class UserBot:
             else:
                 logger.error(f"❌ Ошибка запуска userbot: {e}")
             return False
+    
+    async def sync_monitoring_sources(self):
+        """Синхронизация источников мониторинга с данными пользователей"""
+        try:
+            # Получаем всех пользователей
+            all_users = Storage.get_all_users()
+            
+            # Собираем все источники, которые мониторят пользователи
+            all_sources = set()
+            for user in all_users.values():
+                all_sources.update(user.monitored_channels)
+                all_sources.update(user.monitored_chats)
+            
+            logger.info(f"Найдено {len(all_sources)} источников для мониторинга: {list(all_sources)}")
+            
+            # Обновляем список мониторимых источников userbot
+            self.monitored_sources = all_sources
+            
+            logger.info(f"Userbot синхронизирован с {len(self.monitored_sources)} источниками")
+            
+        except Exception as e:
+            logger.error(f"Ошибка синхронизации источников мониторинга: {e}")
     
     async def stop(self):
         """Остановка userbot"""
@@ -290,6 +335,19 @@ class UserBot:
         """Удаление источника из мониторинга"""
         self.monitored_sources.discard(chat_id)
         logger.info(f"Userbot удалил из мониторинга источник {chat_id}")
+        
+        # Проверяем, мониторит ли этот источник хоть один пользователь
+        all_users = Storage.get_all_users()
+        still_monitored = False
+        for user in all_users.values():
+            if chat_id in user.monitored_channels or chat_id in user.monitored_chats:
+                still_monitored = True
+                break
+        
+        # Если никто больше не мониторит, удаляем из userbot
+        if not still_monitored:
+            self.monitored_sources.discard(chat_id)
+            logger.info(f"Источник {chat_id} полностью удален из мониторинга userbot")
     
     async def get_chat_info(self, chat_username_or_id):
         """Получение информации о чате/канале"""
@@ -317,12 +375,25 @@ class UserBot:
         """Получение списка мониторимых источников"""
         return self.monitored_sources.copy()
 
+    def set_main_bot(self, bot):
+        """Устанавливает ссылку на основного бота"""
+        self.main_bot = bot
+        logger.info("Ссылка на основного бота установлена в userbot")
+
 # Глобальный экземпляр userbot
 userbot = UserBot()
 
-async def start_userbot():
+async def start_userbot(main_bot=None):
     """Запуск userbot"""
-    return await userbot.start()
+    global userbot
+    if userbot and userbot.app:
+        # Устанавливаем ссылку на основного бота
+        if main_bot:
+            userbot.set_main_bot(main_bot)
+        
+        success = await userbot.start()
+        return success
+    return False
 
 async def stop_userbot():
     """Остановка userbot"""

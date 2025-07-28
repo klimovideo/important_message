@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 import os
 import logging
+import html
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ class UserPreferences(BaseModel):
     keywords: List[str] = []  # Keywords to prioritize
     exclude_keywords: List[str] = []  # Keywords to deprioritize
     can_submit_posts: bool = True  # Может ли пользователь предлагать посты
+    current_state: Optional[str] = None  # Текущее состояние пользователя (userbot_join, etc.)
     created_at: datetime = datetime.now()
     updated_at: datetime = datetime.now()
     
@@ -91,7 +93,6 @@ class Message(BaseModel):
     
     def to_user_notification(self) -> str:
         """Format message as a notification to the user"""
-        import html
         source = f"Канал: {html.escape(self.chat_title)}" if self.is_channel else f"Чат: {html.escape(self.chat_title)}"
         sender = f"\nОт: {html.escape(self.sender_name)}" if self.sender_name else ""
         importance = f"\nОценка важности: {self.importance_score:.2f}" if self.importance_score is not None else ""
