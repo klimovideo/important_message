@@ -265,6 +265,11 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
     user = Storage.get_user(user_id)
     text = update.message.text
     
+    # Сбрасываем состояние пользователя при нажатии любой кнопки
+    if user.current_state:
+        user.current_state = None
+        Storage.update_user(user)
+    
     # Main menu buttons
     if text == "📊 Мониторинг":
         if Storage.is_admin(user_id):
@@ -359,6 +364,9 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
     
     elif text == "👥 Администраторы":
         if Storage.is_admin(user_id):
+            # Устанавливаем состояние для управления администраторами
+            user.current_state = "admin_management"
+            Storage.update_user(user)
             await show_admins_management(update, context)
         else:
             await update.message.reply_text("❌ У вас нет прав администратора.")
@@ -923,11 +931,7 @@ async def show_admins_management(update: Update, context: CallbackContext) -> No
     """Show admins management interface."""
     config = Storage.bot_config
     
-    # Устанавливаем состояние для администратора
     user_id = update.effective_user.id
-    user = Storage.get_user(user_id)
-    user.current_state = "admin_management"
-    Storage.update_user(user)
     
     admins_text = (
         f"👥 <b>Управление администраторами</b>\n\n"
