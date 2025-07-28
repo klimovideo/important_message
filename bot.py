@@ -1234,6 +1234,10 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
     text = update.message.text.strip()
     user = Storage.get_user(user_id)  # Получаем пользователя в начале функции
     
+    # Проверяем, не является ли это нажатием кнопки
+    if await handle_reply_buttons(update, context):
+        return
+    
     # Handle keyword additions
     if text.startswith('+') and len(text) > 1:
         if Storage.is_admin(user_id):
