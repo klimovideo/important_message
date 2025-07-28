@@ -125,7 +125,7 @@ class UserBot:
                 logger.info(f"Userbot: оценка важности для пользователя {user.user_id}: {importance_score:.2f}")
                 
                 # Если сообщение достаточно важно, отправляем уведомление через основного бота
-                if importance_score >= user.importance_threshold:
+                if importance_score >= Storage.bot_config.importance_threshold:
                     await self.send_notification_to_user(user.user_id, msg)
                     notified_users.append(user.user_id)
                     
