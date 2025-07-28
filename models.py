@@ -57,7 +57,6 @@ class PendingPost(BaseModel):
 class UserPreferences(BaseModel):
     """User preferences for message filtering"""
     user_id: int
-    importance_threshold: float = 0.7
     monitored_chats: Set[int] = set()  # Set of chat IDs to monitor
     monitored_channels: Set[int] = set()  # Set of channel IDs to monitor
     keywords: List[str] = []  # Keywords to prioritize

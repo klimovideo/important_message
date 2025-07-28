@@ -31,24 +31,22 @@ def get_main_reply_keyboard(user_id: int) -> ReplyKeyboardMarkup:
     is_admin = Storage.is_admin(user_id)
     
     if is_admin:
-        # Полное меню для администраторов
+        # Упрощенное меню для администраторов
         keyboard = [
             ["📝 Модерация постов", "📊 Мониторинг"],
             ["📢 Канал публикации", "👥 Администраторы"],
-            ["⚙️ Настройки", "📈 Статистика"]
+            ["⚙️ Настройки", "🔑 Ключевые слова"]
         ]
         
         if USERBOT_ENABLED:
-            keyboard.append(["🤖 Userbot", "🔑 Ключевые слова"])
+            keyboard.append(["🤖 Userbot", "ℹ️ Справка"])
         else:
-            keyboard.append(["🔑 Ключевые слова"])
-        
-        keyboard.append(["ℹ️ Справка"])
+            keyboard.append(["ℹ️ Справка"])
     else:
         # Ограниченное меню для обычных пользователей
         keyboard = [
             ["📝 Предложить пост", "📢 Предложить канал"],
-            ["ℹ️ Справка"]
+            ["📬 Канал важных сообщений", "ℹ️ Справка"]
         ]
     
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
@@ -133,7 +131,7 @@ async def start_command(update: Update, context: CallbackContext) -> None:
         f"Я анализирую сообщения из ваших чатов и каналов с помощью ИИ "
         f"и уведомляю только о важных сообщениях.\n\n"
         f"📊 <b>Ваши настройки:</b>\n"
-        f"• Порог важности: {user.importance_threshold}\n"
+        f"• Порог важности: {Storage.bot_config.importance_threshold} (глобальный)\n"
         f"• Мониторится источников: {len(user.monitored_chats) + len(user.monitored_channels)}\n"
         f"• Ключевых слов: {len(user.keywords)}\n\n"
         f"💡 Используйте кнопки ниже для навигации"
@@ -287,6 +285,10 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
         )
         return True
     
+    elif text == "📬 Канал важных сообщений":
+        await show_important_channel_info(update, context)
+        return True
+    
     elif text == "⚙️ Настройки":
         if Storage.is_admin(user_id):
             await show_settings_interface(update, context, user)
@@ -294,12 +296,7 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
             await update.message.reply_text("❌ Эта функция доступна только администраторам.")
         return True
     
-    elif text == "📈 Статистика":
-        if Storage.is_admin(user_id):
-            await show_statistics_interface(update, context, user)
-        else:
-            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
-        return True
+
     
     elif text == "🤖 Userbot":
         if USERBOT_ENABLED and Storage.is_admin(user_id):
@@ -427,7 +424,7 @@ async def show_monitoring_interface(update: Update, context: CallbackContext, us
         f"• Всего источников: {total_sources}\n"
         f"• Чатов: {len(user.monitored_chats)}\n"
         f"• Каналов: {len(user.monitored_channels)}\n"
-        f"• Порог важности: {user.importance_threshold}\n\n"
+        f"• Порог важности: {Storage.bot_config.importance_threshold} (глобальный)\n\n"
         f"💡 <b>Как добавить источник:</b>\n"
         f"1. Перешлите сообщение из чата/канала боту\n"
         f"2. Выберите действие в предложенном меню\n\n"
@@ -440,7 +437,6 @@ async def show_monitoring_interface(update: Update, context: CallbackContext, us
             InlineKeyboardButton("🗑️ Удалить источник", callback_data="monitoring_remove")
         ],
         [
-            InlineKeyboardButton("⚙️ Настроить порог", callback_data="monitoring_threshold"),
             InlineKeyboardButton("🧹 Очистить все", callback_data="monitoring_clear")
         ]
     ]
@@ -496,7 +492,7 @@ async def show_settings_interface(update: Update, context: CallbackContext, user
     settings_text = (
         f"⚙️ <b>Настройки</b>\n\n"
         f"📊 <b>Ваши параметры:</b>\n"
-        f"• Порог важности: {user.importance_threshold}\n"
+        f"• Порог важности: {Storage.bot_config.importance_threshold} (глобальный)\n"
         f"• Мониторится чатов: {len(user.monitored_chats)}\n"
         f"• Мониторится каналов: {len(user.monitored_channels)}\n"
         f"• Можете предлагать посты: {'Да' if user.can_submit_posts else 'Нет'}\n\n"
@@ -518,7 +514,6 @@ async def show_settings_interface(update: Update, context: CallbackContext, user
     
     keyboard = [
         [
-            InlineKeyboardButton("📊 Изменить порог", callback_data="settings_threshold"),
             InlineKeyboardButton("🔑 Ключевые слова", callback_data="settings_keywords")
         ]
     ]
@@ -569,7 +564,7 @@ async def show_statistics_interface(update: Update, context: CallbackContext, us
         f"🔑 <b>Фильтрация:</b>\n"
         f"• Ключевых слов: {len(user.keywords)}\n"
         f"• Исключаемых слов: {len(user.exclude_keywords)}\n"
-        f"• Порог важности: {user.importance_threshold}\n\n"
+        f"• Порог важности: {Storage.bot_config.importance_threshold} (глобальный)\n\n"
         f"📝 <b>Активность:</b>\n"
         f"• Может предлагать посты: {'Да' if user.can_submit_posts else 'Нет'}"
     )
@@ -648,6 +643,39 @@ async def show_keywords_interface(update: Update, context: CallbackContext, user
         parse_mode=ParseMode.HTML
     )
 
+async def show_important_channel_info(update: Update, context: CallbackContext) -> None:
+    """Show information about important messages channel."""
+    config = Storage.bot_config
+    
+    if config.publish_channel_username:
+        channel_text = (
+            f"📬 <b>Канал важных сообщений</b>\n\n"
+            f"🔔 В этом канале публикуются самые важные новости и сообщения, "
+            f"отобранные искусственным интеллектом и проверенные администраторами.\n\n"
+            f"📢 <b>Канал:</b> @{config.publish_channel_username}\n"
+            f"🔗 <b>Ссылка:</b> https://t.me/{config.publish_channel_username}\n\n"
+            f"💡 <b>Подпишитесь на канал, чтобы не пропустить важные новости!</b>"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("📢 Перейти в канал", url=f"https://t.me/{config.publish_channel_username}")]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            channel_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await update.message.reply_text(
+            "📬 <b>Канал важных сообщений</b>\n\n"
+            "❌ Канал для публикации важных сообщений пока не настроен.\n"
+            "Администраторы скоро его настроят!",
+            parse_mode=ParseMode.HTML
+        )
+
 async def show_help_interface(update: Update, context: CallbackContext) -> None:
     """Show help interface."""
     user_id = update.effective_user.id
@@ -655,27 +683,19 @@ async def show_help_interface(update: Update, context: CallbackContext) -> None:
     
     if is_admin:
         help_text = (
-            f"ℹ️ <b>Справка по боту</b>\n\n"
-            f"🤖 <b>Основные возможности:</b>\n"
-            f"• Анализ важности сообщений с помощью ИИ\n"
-            f"• Мониторинг чатов и каналов\n"
-            f"• Скрытый мониторинг через Userbot\n"
-            f"• Предложение постов для публикации\n"
-            f"• Настройка критериев важности\n\n"
-            f"📋 <b>Как начать:</b>\n"
-            f"1. Перешлите сообщение из интересного чата/канала\n"
-            f"2. Выберите 'Добавить в мониторинг'\n"
-            f"3. Настройте ключевые слова и порог важности\n"
-            f"4. Получайте уведомления о важных сообщениях!\n\n"
-            f"🔥 <b>Userbot режим:</b>\n"
-            f"• Полностью скрытый мониторинг\n"
-            f"• Работает с закрытыми каналами\n"
-            f"• Анализирует ВСЕ сообщения автоматически\n\n"
-            f"💡 <b>Советы:</b>\n"
-            f"• Используйте кнопки для навигации\n"
-            f"• Настройте ключевые слова для лучшей фильтрации\n"
-            f"• Экспериментируйте с порогом важности\n"
-            f"• Предлагайте интересные посты для публикации"
+            f"ℹ️ <b>Справка администратора</b>\n\n"
+            f"📝 <b>Модерация постов:</b>\n"
+            f"• Просматривайте предложенные посты\n"
+            f"• Одобряйте или отклоняйте их\n"
+            f"• Одобренные посты публикуются в канале\n\n"
+            f"📊 <b>Мониторинг:</b>\n"
+            f"• Перешлите сообщение из чата/канала\n"
+            f"• Добавьте источник в мониторинг\n"
+            f"• Настройте ключевые слова\n\n"
+            f"⚙️ <b>Настройки:</b>\n"
+            f"• Глобальный порог важности: {Storage.bot_config.importance_threshold}\n"
+            f"• Канал публикации: @{Storage.bot_config.publish_channel_username or 'не настроен'}\n\n"
+            f"💡 <b>Совет:</b> Используйте Userbot для скрытого мониторинга закрытых каналов"
         )
     else:
         help_text = (
@@ -695,24 +715,32 @@ async def show_help_interface(update: Update, context: CallbackContext) -> None:
             f"• Вы получите уведомление о решении по вашему посту"
         )
     
-    keyboard = [
-        [
-            InlineKeyboardButton("🚀 Быстрый старт", callback_data="help_quickstart"),
-            InlineKeyboardButton("🤖 Настройка Userbot", callback_data="help_userbot")
-        ],
-        [
-            InlineKeyboardButton("💡 Советы", callback_data="help_tips"),
-            InlineKeyboardButton("❓ FAQ", callback_data="help_faq")
+    # Inline кнопки только для администраторов
+    if is_admin:
+        keyboard = [
+            [
+                InlineKeyboardButton("🚀 Быстрый старт", callback_data="help_quickstart"),
+                InlineKeyboardButton("🤖 Настройка Userbot", callback_data="help_userbot")
+            ],
+            [
+                InlineKeyboardButton("💡 Советы", callback_data="help_tips"),
+                InlineKeyboardButton("❓ FAQ", callback_data="help_faq")
+            ]
         ]
-    ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
-        help_text,
-        reply_markup=reply_markup,
-        parse_mode=ParseMode.HTML
-    )
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            help_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        # Для обычных пользователей без inline кнопок
+        await update.message.reply_text(
+            help_text,
+            parse_mode=ParseMode.HTML
+        )
 
 # ===========================================
 # USERBOT INTERFACES  
@@ -844,26 +872,13 @@ async def show_admin_config(update: Update, context: CallbackContext) -> None:
     
     config_text = (
         f"⚙️ <b>Конфигурация бота</b>\n\n"
-        f"🤖 <b>Автопубликация:</b> {'Включена' if config.auto_publish_enabled else 'Отключена'}\n"
-        f"✋ <b>Требует одобрения:</b> {'Да' if config.require_admin_approval else 'Нет'}\n"
-        f"📊 <b>Порог важности:</b> {config.importance_threshold}\n"
-        f"📢 <b>Канал публикации:</b> {config.publish_channel_username or 'Не настроен'}\n\n"
-        f"💡 <b>Используйте кнопки для изменения настроек</b>"
+        f"📊 <b>Глобальный порог важности:</b> {config.importance_threshold}\n"
+        f"📢 <b>Канал публикации:</b> {config.publish_channel_username or 'Не настроен'}\n"
+        f"👥 <b>Администраторов:</b> {len(config.admin_ids)}\n\n"
+        f"💡 <b>Все посты проходят модерацию перед публикацией</b>"
     )
     
     keyboard = [
-        [
-            InlineKeyboardButton(
-                f"🤖 Автопубликация: {'✅' if config.auto_publish_enabled else '❌'}", 
-                callback_data="admin_toggle_autopublish"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                f"✋ Требует одобрения: {'✅' if config.require_admin_approval else '❌'}", 
-                callback_data="admin_toggle_approval"
-            )
-        ],
         [
             InlineKeyboardButton("📊 Изменить порог важности", callback_data="admin_threshold"),
         ]
@@ -948,9 +963,9 @@ async def show_admins_management(update: Update, context: CallbackContext) -> No
     user_id = update.effective_user.id
     
     admins_text = (
-        f"👥 <b>Управление администраторами</b>\n\n"
-        f"📊 <b>Всего администраторов:</b> {len(config.admin_ids)}\n\n"
-        f"📋 <b>Список администраторов:</b>\n"
+        f"👥 <b>Администраторы бота</b>\n\n"
+        f"📊 <b>Всего:</b> {len(config.admin_ids)}\n\n"
+        f"📋 <b>Список:</b>\n"
     )
     
     # Получаем информацию о каждом администраторе
@@ -1202,7 +1217,7 @@ async def show_userbot_status(update: Update, context: CallbackContext) -> None:
         status_text += f"\n\n📋 <b>Ваш личный мониторинг:</b>\n"
         status_text += f"• Чатов: {len(user.monitored_chats)}\n"
         status_text += f"• Каналов: {len(user.monitored_channels)}\n"
-        status_text += f"• Порог важности: {user.importance_threshold}\n"
+        status_text += f"• Порог важности: {Storage.bot_config.importance_threshold} (глобальный)\n"
         status_text += f"• Ключевых слов: {len(user.keywords)}\n"
         
         keyboard = [
@@ -1495,21 +1510,7 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
             await update.message.reply_text("❌ Эта функция доступна только администраторам.")
         return
     
-    # Handle threshold setting
-    elif text.replace('.', '').isdigit() and 0 <= float(text) <= 1:
-        if Storage.is_admin(user_id):
-            threshold = float(text)
-            user = Storage.get_user(user_id)
-            user.importance_threshold = threshold
-            Storage.update_user(user)
-            await update.message.reply_text(
-                f"✅ <b>Порог важности установлен:</b> {threshold}\n\n"
-                f"💡 Теперь вы будете получать уведомления о сообщениях с важностью выше {threshold}",
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
-        return
+
     
     # Handle channel suggestions from regular users
     elif not Storage.is_admin(user_id) and (
@@ -1900,19 +1901,6 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
     elif data == "monitoring_remove":
         await show_monitoring_remove(query, context, user)
     
-    elif data == "monitoring_threshold":
-        await query.edit_message_text(
-            "📊 <b>Настройка порога важности</b>\n\n"
-            f"Текущий порог: <b>{user.importance_threshold}</b>\n\n"
-            "💡 <b>Отправьте число от 0.0 до 1.0</b>\n"
-            "Например: 0.7\n\n"
-            "🔍 <b>Рекомендации:</b>\n"
-            "• 0.3-0.5 - Только очень важные\n"
-            "• 0.5-0.7 - Важные (рекомендуется)\n"
-            "• 0.7-0.9 - Большинство сообщений",
-            parse_mode=ParseMode.HTML
-        )
-    
     elif data == "monitoring_clear":
         keyboard = [
             [
@@ -1930,14 +1918,6 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
         )
     
     # Settings callbacks
-    elif data == "settings_threshold":
-        await query.edit_message_text(
-            "📊 <b>Изменение порога важности</b>\n\n"
-            f"Текущий порог: <b>{user.importance_threshold}</b>\n\n"
-            "💡 <b>Отправьте новое значение от 0.0 до 1.0</b>",
-            parse_mode=ParseMode.HTML
-        )
-    
     elif data == "settings_keywords":
         await show_keywords_interface(update, context, user)
     
@@ -2007,26 +1987,6 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
         )
     
     # Admin callbacks
-    elif data == "admin_toggle_autopublish":
-        if Storage.is_admin(user_id):
-            config = Storage.bot_config
-            config.auto_publish_enabled = not config.auto_publish_enabled
-            Storage.update_config(config)
-            
-            await query.edit_message_text(
-                f"✅ Автопубликация {'включена' if config.auto_publish_enabled else 'отключена'}.",
-            )
-    
-    elif data == "admin_toggle_approval":
-        if Storage.is_admin(user_id):
-            config = Storage.bot_config
-            config.require_admin_approval = not config.require_admin_approval
-            Storage.update_config(config)
-            
-            await query.edit_message_text(
-                f"✅ Требование одобрения {'включено' if config.require_admin_approval else 'отключено'}."
-            )
-    
     elif data == "admin_threshold":
         if Storage.is_admin(user_id):
             # Устанавливаем состояние для администратора
@@ -2054,7 +2014,29 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
             success = await AdminService.approve_post(context.bot, post_id, user_id)
             
             if success:
-                await query.edit_message_text(f"✅ Пост {post_id} одобрен и опубликован!")
+                # Проверяем, есть ли еще посты на модерации
+                pending_posts = AdminService.get_posts_for_review()
+                
+                if pending_posts:
+                    # Показываем следующий пост
+                    await query.edit_message_text(
+                        f"✅ Пост {post_id} одобрен и опубликован!\n\n"
+                        f"📝 Осталось постов на модерации: {len(pending_posts)}",
+                        parse_mode=ParseMode.HTML
+                    )
+                    
+                    # Автоматически показываем следующий пост через 2 секунды
+                    await asyncio.sleep(2)
+                    
+                    # Эмулируем нажатие кнопки "Следующий"
+                    query.data = "admin_next_post"
+                    await callback_query_handler(query, context)
+                else:
+                    await query.edit_message_text(
+                        f"✅ Пост {post_id} одобрен и опубликован!\n\n"
+                        f"✅ Все посты обработаны!",
+                        parse_mode=ParseMode.HTML
+                    )
             else:
                 await query.edit_message_text(f"❌ Ошибка при одобрении поста {post_id}.")
     
@@ -2064,7 +2046,29 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
             success = await AdminService.reject_post(context.bot, post_id, user_id, "Отклонен администратором")
             
             if success:
-                await query.edit_message_text(f"❌ Пост {post_id} отклонен.")
+                # Проверяем, есть ли еще посты на модерации
+                pending_posts = AdminService.get_posts_for_review()
+                
+                if pending_posts:
+                    # Показываем следующий пост
+                    await query.edit_message_text(
+                        f"❌ Пост {post_id} отклонен.\n\n"
+                        f"📝 Осталось постов на модерации: {len(pending_posts)}",
+                        parse_mode=ParseMode.HTML
+                    )
+                    
+                    # Автоматически показываем следующий пост через 2 секунды
+                    await asyncio.sleep(2)
+                    
+                    # Эмулируем нажатие кнопки "Следующий"
+                    query.data = "admin_next_post"
+                    await callback_query_handler(query, context)
+                else:
+                    await query.edit_message_text(
+                        f"❌ Пост {post_id} отклонен.\n\n"
+                        f"✅ Все посты обработаны!",
+                        parse_mode=ParseMode.HTML
+                    )
             else:
                 await query.edit_message_text(f"❌ Ошибка при отклонении поста {post_id}.")
     
@@ -2092,6 +2096,59 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
                 await query.edit_message_text(full_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
             else:
                 await query.edit_message_text("❌ Пост не найден.")
+    
+    elif data == "admin_next_post":
+        if Storage.is_admin(user_id):
+            # Получаем список постов на модерации
+            pending_posts = AdminService.get_posts_for_review()
+            
+            if len(pending_posts) <= 1:
+                await query.edit_message_text(
+                    "✅ <b>Больше нет постов на модерации</b>\n\n"
+                    "Все предложенные посты обработаны.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            
+            # Находим следующий пост (пропускаем первый, так как он уже показан)
+            next_post = pending_posts[1] if len(pending_posts) > 1 else pending_posts[0]
+            
+            post_text = (
+                f"📝 <b>Пост на модерации</b> (2 из {len(pending_posts)})\n\n"
+                f"📋 <b>ID поста:</b> {next_post.post_id}\n"
+                f"👤 <b>От пользователя:</b> {next_post.user_id}\n"
+                f"📅 <b>Время:</b> {next_post.submitted_at.strftime('%d.%m.%Y %H:%M')}\n"
+            )
+            
+            if next_post.source_info:
+                post_text += f"📋 <b>Источник:</b> {next_post.source_info}\n"
+            
+            if next_post.importance_score:
+                post_text += f"⭐ <b>Оценка ИИ:</b> {next_post.importance_score:.2f}\n"
+            
+            post_text += f"\n📄 <b>Текст:</b>\n{next_post.message_text[:400]}"
+            
+            if len(next_post.message_text) > 400:
+                post_text += "..."
+            
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Одобрить", callback_data=f"admin_approve_{next_post.post_id}"),
+                    InlineKeyboardButton("❌ Отклонить", callback_data=f"admin_reject_{next_post.post_id}")
+                ],
+                [
+                    InlineKeyboardButton("📄 Полный текст", callback_data=f"admin_full_{next_post.post_id}"),
+                    InlineKeyboardButton("⏭️ Следующий", callback_data="admin_next_post")
+                ]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                post_text,
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.HTML
+            )
     
     elif data == "admin_clear_channel":
         if Storage.is_admin(user_id):
@@ -2240,7 +2297,6 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
         user.monitored_channels.clear()
         user.keywords.clear()
         user.exclude_keywords.clear()
-        user.importance_threshold = DEFAULT_IMPORTANCE_THRESHOLD
         Storage.update_user(user)
         await query.edit_message_text("✅ Все ваши данные очищены.")
     
@@ -2345,8 +2401,8 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
             result_text = (
                 f"🔍 <b>Анализ завершен</b>\n\n"
                 f"📊 <b>Оценка важности:</b> {importance_score:.2f}\n"
-                f"🎯 <b>Ваш порог:</b> {user.importance_threshold}\n\n"
-                f"{'✅ Сообщение важное!' if importance_score >= user.importance_threshold else '❌ Сообщение не достигает порога важности.'}\n\n"
+                f"🎯 <b>Глобальный порог:</b> {Storage.bot_config.importance_threshold}\n\n"
+                f"{'✅ Сообщение важное!' if importance_score >= Storage.bot_config.importance_threshold else '❌ Сообщение не достигает порога важности.'}\n\n"
                 f"💡 Источник не сохранен в мониторинг."
             )
             
@@ -2671,10 +2727,10 @@ async def handle_message_forwarded(update: Update, context: CallbackContext) -> 
                 importance_score = evaluate_message_importance(message, user)
                 message.importance_score = importance_score
                 
-                logger.info(f"Оценка важности: {importance_score:.2f}, порог: {user.importance_threshold}")
+                logger.info(f"Оценка важности: {importance_score:.2f}, порог: {Storage.bot_config.importance_threshold}")
                 
                 # Check if the message is important enough to notify the user
-                if importance_score >= user.importance_threshold:
+                if importance_score >= Storage.bot_config.importance_threshold:
                     # Create keyboard with option to submit for publication
                     keyboard = [
                         [InlineKeyboardButton("📝 Предложить для публикации", callback_data=f"submit_forwarded_{update.message.message_id}")]
@@ -2707,8 +2763,8 @@ async def handle_message_forwarded(update: Update, context: CallbackContext) -> 
                     await update.message.reply_text(
                         f"📊 <b>Анализ завершен</b>\n\n"
                         f"Сообщение из {chat_title} имеет оценку важности <b>{importance_score:.2f}</b>, "
-                        f"что ниже вашего порога <b>{user.importance_threshold}</b>.\n\n"
-                        f"💡 Вы можете изменить порог важности в настройках.",
+                                            f"что ниже глобального порога <b>{Storage.bot_config.importance_threshold}</b>.\n\n"
+                    f"💡 Администраторы могут изменить глобальный порог важности.",
                         parse_mode=ParseMode.HTML,
                         reply_markup=reply_markup
                     )
@@ -2785,10 +2841,10 @@ async def handle_message_forwarded(update: Update, context: CallbackContext) -> 
                 message.importance_score = importance_score
                 max_importance_score = max(max_importance_score, importance_score)
                 
-                logger.info(f"Оценка важности для пользователя {user.user_id}: {importance_score:.2f}, порог: {user.importance_threshold}")
+                logger.info(f"Оценка важности для пользователя {user.user_id}: {importance_score:.2f}, порог: {Storage.bot_config.importance_threshold}")
                 
                 # If message is important enough, send notification to user
-                if importance_score >= user.importance_threshold:
+                if importance_score >= Storage.bot_config.importance_threshold:
                     notification_text = (
                         f"🔔 <b>ВАЖНОЕ СООБЩЕНИЕ</b>\n\n"
                         f"{message.to_user_notification()}\n\n"
@@ -2807,7 +2863,7 @@ async def handle_message_forwarded(update: Update, context: CallbackContext) -> 
                               f"из {chat_title} (оценка: {importance_score:.2f})")
                 else:
                     logger.info(f"Сообщение не достаточно важно для пользователя {user.user_id} "
-                              f"(оценка: {importance_score:.2f}, порог: {user.importance_threshold})")
+                              f"(оценка: {importance_score:.2f}, порог: {Storage.bot_config.importance_threshold})")
                     
             except Exception as e:
                 logger.error(f"Ошибка обработки сообщения для пользователя {user.user_id}: {e}")
