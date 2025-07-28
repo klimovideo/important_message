@@ -34,6 +34,9 @@ token_cache = {
 
 def get_access_token(force_refresh=False) -> str:
     """Get access token with caching and auto-refresh."""
+    if not GIGACHAT_AVAILABLE:
+        raise RuntimeError("GigaChat недоступен: CLIENT_ID или SECRET не установлены")
+    
     current_time = datetime.now()
     
     # Check if we have a valid cached token

@@ -112,9 +112,52 @@ class Storage:
     @classmethod
     def load_from_file(cls) -> None:
         """Load all data from JSON files"""
+        cls.ensure_files_exist()
         cls.load_users()
         cls.load_config()
         cls.load_posts()
+    
+    @classmethod
+    def ensure_files_exist(cls) -> None:
+        """Ensure all required files exist with default content"""
+        # Create user preferences file if not exists
+        if not os.path.exists(cls.DB_FILE):
+            logger.info(f"Создаю файл {cls.DB_FILE}")
+            with open(cls.DB_FILE, 'w', encoding='utf-8') as f:
+                json.dump({}, f, ensure_ascii=False, indent=2)
+        
+        # Create bot config file if not exists
+        if not os.path.exists(cls.CONFIG_FILE):
+            logger.info(f"Создаю файл {cls.CONFIG_FILE}")
+            default_config = BotConfig()
+            config_dict = {
+                "admin_ids": list(default_config.admin_ids),
+                "publish_channel_id": default_config.publish_channel_id,
+                "publish_channel_username": default_config.publish_channel_username,
+                "importance_threshold": default_config.importance_threshold,
+                "importance_criteria": {
+                    "keywords_boost": default_config.importance_criteria.keywords_boost,
+                    "keywords_reduce": default_config.importance_criteria.keywords_reduce,
+                    "sources_boost": default_config.importance_criteria.sources_boost,
+                    "sources_reduce": default_config.importance_criteria.sources_reduce,
+                    "min_message_length": default_config.importance_criteria.min_message_length,
+                    "max_message_length": default_config.importance_criteria.max_message_length,
+                    "exclude_forwarded": default_config.importance_criteria.exclude_forwarded,
+                    "time_sensitivity": default_config.importance_criteria.time_sensitivity
+                },
+                "auto_publish_enabled": default_config.auto_publish_enabled,
+                "require_admin_approval": default_config.require_admin_approval,
+                "created_at": default_config.created_at.isoformat(),
+                "updated_at": default_config.updated_at.isoformat()
+            }
+            with open(cls.CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(config_dict, f, ensure_ascii=False, indent=2)
+        
+        # Create pending posts file if not exists
+        if not os.path.exists(cls.POSTS_FILE):
+            logger.info(f"Создаю файл {cls.POSTS_FILE}")
+            with open(cls.POSTS_FILE, 'w', encoding='utf-8') as f:
+                json.dump({}, f, ensure_ascii=False, indent=2)
     
     @classmethod
     def load_users(cls) -> None:
@@ -216,12 +259,18 @@ class Storage:
     
     @classmethod
     def save_users(cls) -> None:
-        """Save user preferences to JSON file"""
+        """Save user preferences to JSON file with backup"""
         try:
-            # Convert sets to lists for JSON serialization
+            # Создаем резервную копию если файл существует
+            if os.path.exists(cls.DB_FILE):
+                import shutil
+                backup_file = f"{cls.DB_FILE}.bak"
+                shutil.copy2(cls.DB_FILE, backup_file)
+            
             data = {}
             for user_id, user in cls.users.items():
                 user_dict = user.dict()
+                # Convert sets to lists for JSON serialization
                 user_dict['monitored_chats'] = list(user.monitored_chats)
                 user_dict['monitored_channels'] = list(user.monitored_channels)
                 data[str(user_id)] = user_dict
@@ -233,6 +282,12 @@ class Storage:
             
         except Exception as e:
             logger.error(f"Ошибка сохранения базы данных: {e}")
+            # Восстанавливаем из резервной копии если есть
+            backup_file = f"{cls.DB_FILE}.bak"
+            if os.path.exists(backup_file):
+                import shutil
+                shutil.copy2(backup_file, cls.DB_FILE)
+                logger.info("Восстановлена резервная копия базы данных")
     
     @classmethod
     def save_config(cls) -> None:
