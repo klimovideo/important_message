@@ -33,8 +33,9 @@ def get_main_reply_keyboard(user_id: int) -> ReplyKeyboardMarkup:
     if is_admin:
         # Полное меню для администраторов
         keyboard = [
-            ["📊 Мониторинг", "📝 Предложить пост"],
-            ["⚙️ Настройки", "📈 Статистика"],
+            ["📝 Модерация постов", "📊 Мониторинг"],
+            ["📢 Канал публикации", "👥 Администраторы"],
+            ["⚙️ Настройки", "📈 Статистика"]
         ]
         
         if USERBOT_ENABLED:
@@ -42,7 +43,6 @@ def get_main_reply_keyboard(user_id: int) -> ReplyKeyboardMarkup:
         else:
             keyboard.append(["🔑 Ключевые слова"])
         
-        keyboard.append(["🔧 Администрирование"])
         keyboard.append(["ℹ️ Справка"])
     else:
         # Ограниченное меню для обычных пользователей
@@ -53,15 +53,7 @@ def get_main_reply_keyboard(user_id: int) -> ReplyKeyboardMarkup:
     
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
-def get_admin_reply_keyboard() -> ReplyKeyboardMarkup:
-    """Создает клавиатуру для администраторов"""
-    keyboard = [
-        ["📝 Модерация постов", "⚙️ Конфигурация"],
-        ["📢 Канал публикации", "👥 Администраторы"],
-        ["📊 Статистика админа", "🔙 Главное меню"]
-    ]
-    
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+
 
 def get_userbot_reply_keyboard() -> ReplyKeyboardMarkup:
     """Создает клавиатуру для userbot"""
@@ -283,6 +275,7 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
         return True
     
     elif text == "📢 Предложить канал":
+        context.user_data['awaiting_channel_suggestion'] = True
         await update.message.reply_text(
             "📢 <b>Предложение канала для мониторинга</b>\n\n"
             "💡 <b>Отправьте:</b>\n"
@@ -324,17 +317,7 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
             await update.message.reply_text("❌ Эта функция доступна только администраторам.")
         return True
     
-    elif text == "🔧 Администрирование":
-        if Storage.is_admin(user_id):
-            reply_markup = get_admin_reply_keyboard()
-            await update.message.reply_text(
-                "🔧 <b>Панель администратора</b>\n\nВыберите действие:",
-                reply_markup=reply_markup,
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await update.message.reply_text("❌ У вас нет прав администратора.")
-        return True
+
     
     elif text == "ℹ️ Справка":
         await show_help_interface(update, context)
@@ -348,12 +331,7 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
             await update.message.reply_text("❌ У вас нет прав администратора.")
         return True
     
-    elif text == "⚙️ Конфигурация":
-        if Storage.is_admin(user_id):
-            await show_admin_config(update, context)
-        else:
-            await update.message.reply_text("❌ У вас нет прав администратора.")
-        return True
+
     
     elif text == "📢 Канал публикации":
         if Storage.is_admin(user_id):
@@ -372,12 +350,7 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
             await update.message.reply_text("❌ У вас нет прав администратора.")
         return True
     
-    elif text == "📊 Статистика админа":
-        if Storage.is_admin(user_id):
-            await show_admin_statistics(update, context)
-        else:
-            await update.message.reply_text("❌ У вас нет прав администратора.")
-        return True
+
     
     # Userbot buttons
     elif text == "🚀 Запустить":
@@ -518,30 +491,60 @@ async def show_settings_interface(update: Update, context: CallbackContext, user
     """Show settings interface with inline buttons."""
     keywords = ", ".join(user.keywords) if user.keywords else "Не указаны"
     exclude_keywords = ", ".join(user.exclude_keywords) if user.exclude_keywords else "Не указаны"
+    config = Storage.bot_config
     
     settings_text = (
-        f"⚙️ <b>Ваши настройки</b>\n\n"
-        f"📊 <b>Основные параметры:</b>\n"
+        f"⚙️ <b>Настройки</b>\n\n"
+        f"📊 <b>Ваши параметры:</b>\n"
         f"• Порог важности: {user.importance_threshold}\n"
         f"• Мониторится чатов: {len(user.monitored_chats)}\n"
         f"• Мониторится каналов: {len(user.monitored_channels)}\n"
         f"• Можете предлагать посты: {'Да' if user.can_submit_posts else 'Нет'}\n\n"
         f"🔑 <b>Ключевые слова:</b>\n"
         f"• Важные: {keywords[:100]}{'...' if len(keywords) > 100 else ''}\n"
-        f"• Исключаемые: {exclude_keywords[:100]}{'...' if len(exclude_keywords) > 100 else ''}\n\n"
-        f"💡 Используйте кнопки для изменения настроек"
+        f"• Исключаемые: {exclude_keywords[:100]}{'...' if len(exclude_keywords) > 100 else ''}\n"
     )
+    
+    # Добавляем глобальные настройки для администраторов
+    if Storage.is_admin(user.user_id):
+        settings_text += (
+            f"\n\n🌐 <b>Глобальные настройки:</b>\n"
+            f"• Автопубликация: {'Включена' if config.auto_publish_enabled else 'Отключена'}\n"
+            f"• Требует одобрения: {'Да' if config.require_admin_approval else 'Нет'}\n"
+            f"• Глобальный порог: {config.importance_threshold}\n"
+        )
+    
+    settings_text += "\n\n💡 Используйте кнопки для изменения настроек"
     
     keyboard = [
         [
             InlineKeyboardButton("📊 Изменить порог", callback_data="settings_threshold"),
             InlineKeyboardButton("🔑 Ключевые слова", callback_data="settings_keywords")
-        ],
-        [
-            InlineKeyboardButton("🗑️ Очистить данные", callback_data="settings_clear"),
-            InlineKeyboardButton("🔄 Сброс настроек", callback_data="settings_reset")
         ]
     ]
+    
+    # Добавляем кнопки глобальных настроек для администраторов
+    if Storage.is_admin(user.user_id):
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🤖 Автопубликация: {'✅' if config.auto_publish_enabled else '❌'}", 
+                callback_data="admin_toggle_autopublish"
+            )
+        ])
+        keyboard.append([
+            InlineKeyboardButton(
+                f"✋ Требует одобрения: {'✅' if config.require_admin_approval else '❌'}", 
+                callback_data="admin_toggle_approval"
+            )
+        ])
+        keyboard.append([
+            InlineKeyboardButton("📊 Глобальный порог", callback_data="admin_threshold")
+        ])
+    
+    keyboard.append([
+        InlineKeyboardButton("🗑️ Очистить данные", callback_data="settings_clear"),
+        InlineKeyboardButton("🔄 Сброс настроек", callback_data="settings_reset")
+    ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -647,29 +650,50 @@ async def show_keywords_interface(update: Update, context: CallbackContext, user
 
 async def show_help_interface(update: Update, context: CallbackContext) -> None:
     """Show help interface."""
-    help_text = (
-        f"ℹ️ <b>Справка по боту</b>\n\n"
-        f"🤖 <b>Основные возможности:</b>\n"
-        f"• Анализ важности сообщений с помощью ИИ\n"
-        f"• Мониторинг чатов и каналов\n"
-        f"• Скрытый мониторинг через Userbot\n"
-        f"• Предложение постов для публикации\n"
-        f"• Настройка критериев важности\n\n"
-        f"📋 <b>Как начать:</b>\n"
-        f"1. Перешлите сообщение из интересного чата/канала\n"
-        f"2. Выберите 'Добавить в мониторинг'\n"
-        f"3. Настройте ключевые слова и порог важности\n"
-        f"4. Получайте уведомления о важных сообщениях!\n\n"
-        f"🔥 <b>Userbot режим:</b>\n"
-        f"• Полностью скрытый мониторинг\n"
-        f"• Работает с закрытыми каналами\n"
-        f"• Анализирует ВСЕ сообщения автоматически\n\n"
-        f"💡 <b>Советы:</b>\n"
-        f"• Используйте кнопки для навигации\n"
-        f"• Настройте ключевые слова для лучшей фильтрации\n"
-        f"• Экспериментируйте с порогом важности\n"
-        f"• Предлагайте интересные посты для публикации"
-    )
+    user_id = update.effective_user.id
+    is_admin = Storage.is_admin(user_id)
+    
+    if is_admin:
+        help_text = (
+            f"ℹ️ <b>Справка по боту</b>\n\n"
+            f"🤖 <b>Основные возможности:</b>\n"
+            f"• Анализ важности сообщений с помощью ИИ\n"
+            f"• Мониторинг чатов и каналов\n"
+            f"• Скрытый мониторинг через Userbot\n"
+            f"• Предложение постов для публикации\n"
+            f"• Настройка критериев важности\n\n"
+            f"📋 <b>Как начать:</b>\n"
+            f"1. Перешлите сообщение из интересного чата/канала\n"
+            f"2. Выберите 'Добавить в мониторинг'\n"
+            f"3. Настройте ключевые слова и порог важности\n"
+            f"4. Получайте уведомления о важных сообщениях!\n\n"
+            f"🔥 <b>Userbot режим:</b>\n"
+            f"• Полностью скрытый мониторинг\n"
+            f"• Работает с закрытыми каналами\n"
+            f"• Анализирует ВСЕ сообщения автоматически\n\n"
+            f"💡 <b>Советы:</b>\n"
+            f"• Используйте кнопки для навигации\n"
+            f"• Настройте ключевые слова для лучшей фильтрации\n"
+            f"• Экспериментируйте с порогом важности\n"
+            f"• Предлагайте интересные посты для публикации"
+        )
+    else:
+        help_text = (
+            f"ℹ️ <b>Справка по боту</b>\n\n"
+            f"🤖 <b>Что умеет этот бот:</b>\n"
+            f"• Принимает предложения постов для публикации\n"
+            f"• Принимает предложения каналов для мониторинга\n\n"
+            f"📝 <b>Как предложить пост:</b>\n"
+            f"1. Нажмите кнопку '📝 Предложить пост'\n"
+            f"2. Отправьте текст вашего поста\n"
+            f"3. Подтвердите отправку на модерацию\n\n"
+            f"📢 <b>Как предложить канал:</b>\n"
+            f"1. Нажмите кнопку '📢 Предложить канал'\n"
+            f"2. Отправьте ссылку или username канала\n\n"
+            f"💡 <b>Важно:</b>\n"
+            f"• Все предложения рассматриваются администраторами\n"
+            f"• Вы получите уведомление о решении по вашему посту"
+        )
     
     keyboard = [
         [
@@ -860,26 +884,16 @@ async def show_channel_config(update: Update, context: CallbackContext) -> None:
     username_info = f"@{html.escape(config.publish_channel_username)}" if config.publish_channel_username else "Не указан"
     
     # Устанавливаем состояние для администратора
-    if hasattr(update, 'callback_query') and update.callback_query:
-        user_id = update.callback_query.from_user.id
-    elif hasattr(update, 'effective_user') and update.effective_user:
-        user_id = update.effective_user.id
-    else:
-        user_id = None
-        
-    if user_id:
-        user = Storage.get_user(user_id)
-        user.current_state = "channel_setup"
-        Storage.update_user(user)
+    user_id = update.effective_user.id
+    user = Storage.get_user(user_id)
+    user.current_state = "channel_setup"
+    Storage.update_user(user)
     
     # Получаем список каналов, где бот является администратором
     admin_channels = await get_bot_admin_channels(context.bot)
     
-    # Определяем, откуда пришел запрос
-    if hasattr(update, 'callback_query') and update.callback_query:
-        message_func = update.callback_query.message.reply_text
-    else:
-        message_func = update.message.reply_text
+    # Используем простой reply_text
+    message_func = update.message.reply_text
     
     channel_text = (
         f"📢 <b>Настройка канала публикации</b>\n\n"
@@ -1238,6 +1252,42 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
     if await handle_reply_buttons(update, context):
         return
     
+    # Обработка предложения канала
+    if context.user_data.get('awaiting_channel_suggestion'):
+        context.user_data.pop('awaiting_channel_suggestion', None)
+        
+        # Отправляем предложение администраторам
+        config = Storage.bot_config
+        if config.admin_ids:
+            notification_text = (
+                f"📢 <b>Новое предложение канала</b>\n\n"
+                f"👤 <b>От пользователя:</b> {user_id}\n"
+                f"📅 <b>Время:</b> {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
+                f"📋 <b>Предложение:</b> {html.escape(text)}"
+            )
+            
+            for admin_id in config.admin_ids:
+                try:
+                    await context.bot.send_message(
+                        chat_id=admin_id,
+                        text=notification_text,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.warning(f"Не удалось уведомить администратора {admin_id}: {e}")
+            
+            await update.message.reply_text(
+                "✅ <b>Ваше предложение отправлено администраторам!</b>\n\n"
+                "Они рассмотрят его в ближайшее время.",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await update.message.reply_text(
+                "❌ К сожалению, в данный момент нет администраторов для рассмотрения вашего предложения.",
+                parse_mode=ParseMode.HTML
+            )
+        return
+    
     # Handle keyword additions
     if text.startswith('+') and len(text) > 1:
         if Storage.is_admin(user_id):
@@ -1502,11 +1552,16 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
             )
         return
     
-    # If nothing matched, treat as reply button
-    button_handled = await handle_reply_buttons(update, context)
+    # If nothing matched and it's not a button text, treat as post submission
+    # Check if text is not a known button
+    known_buttons = [
+        "📝 Предложить пост", "📢 Предложить канал", "ℹ️ Справка",
+        "📝 Модерация постов", "📢 Канал публикации", "👥 Администраторы",
+        "📊 Мониторинг", "🤖 Userbot", "⚙️ Настройки", "📈 Статистика",
+        "🔑 Ключевые слова", "🚀 Запустить", "🛑 Остановить", "🔙 Главное меню"
+    ]
     
-    # Handle post submission (regular text) - only if not handled by buttons
-    if not button_handled and len(text) > 10 and not text.startswith('/'):
+    if text not in known_buttons and len(text) > 10 and not text.startswith('/'):
         await handle_post_submission_text(update, context, text)
         return
 
@@ -2368,13 +2423,31 @@ async def show_monitoring_list(query, context: CallbackContext, user: UserPrefer
     if user.monitored_chats:
         list_text += "💬 <b>Чаты:</b>\n"
         for chat_id in user.monitored_chats:
-            list_text += f"• {chat_id}\n"
+            try:
+                chat = await context.bot.get_chat(chat_id)
+                chat_title = html.escape(chat.title or "Без названия")
+                chat_link = f"https://t.me/{chat.username}" if chat.username else ""
+                if chat_link:
+                    list_text += f"• <a href='{chat_link}'>{chat_title}</a> ({chat_id})\n"
+                else:
+                    list_text += f"• {chat_title} ({chat_id})\n"
+            except Exception:
+                list_text += f"• {chat_id}\n"
         list_text += "\n"
     
     if user.monitored_channels:
         list_text += "📢 <b>Каналы:</b>\n"
         for channel_id in user.monitored_channels:
-            list_text += f"• {channel_id}\n"
+            try:
+                channel = await context.bot.get_chat(channel_id)
+                channel_title = html.escape(channel.title or "Без названия")
+                channel_link = f"https://t.me/{channel.username}" if channel.username else ""
+                if channel_link:
+                    list_text += f"• <a href='{channel_link}'>{channel_title}</a> ({channel_id})\n"
+                else:
+                    list_text += f"• {channel_title} ({channel_id})\n"
+            except Exception:
+                list_text += f"• {channel_id}\n"
     
     await query.edit_message_text(list_text, parse_mode=ParseMode.HTML)
 
@@ -2388,11 +2461,23 @@ async def show_monitoring_remove(query, context: CallbackContext, user: UserPref
     
     # Add chat buttons
     for chat_id in user.monitored_chats:
-        keyboard.append([InlineKeyboardButton(f"💬 Чат: {chat_id}", callback_data=f"remove_chat_{chat_id}")])
+        try:
+            chat = await context.bot.get_chat(chat_id)
+            chat_title = chat.title or "Без названия"
+            button_text = f"💬 {chat_title[:30]}{'...' if len(chat_title) > 30 else ''}"
+        except Exception:
+            button_text = f"💬 Чат: {chat_id}"
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"remove_chat_{chat_id}")])
     
     # Add channel buttons
     for channel_id in user.monitored_channels:
-        keyboard.append([InlineKeyboardButton(f"📢 Канал: {channel_id}", callback_data=f"remove_channel_{channel_id}")])
+        try:
+            channel = await context.bot.get_chat(channel_id)
+            channel_title = channel.title or "Без названия"
+            button_text = f"📢 {channel_title[:30]}{'...' if len(channel_title) > 30 else ''}"
+        except Exception:
+            button_text = f"📢 Канал: {channel_id}"
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"remove_channel_{channel_id}")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
