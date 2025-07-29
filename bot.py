@@ -34,13 +34,9 @@ def get_main_reply_keyboard(user_id: int) -> ReplyKeyboardMarkup:
         # Упрощенное меню для администраторов
         keyboard = [
             ["📊 Мониторинг", "📢 Канал публикации"],
-            ["👥 Администраторы", "⚙️ Настройки"]
+            ["👥 Администраторы", "⚙️ Настройки"],
+            ["ℹ️ Справка"]
         ]
-        
-        if USERBOT_ENABLED:
-            keyboard.append(["🤖 Userbot", "ℹ️ Справка"])
-        else:
-            keyboard.append(["ℹ️ Справка"])
     else:
         # Ограниченное меню для обычных пользователей
         keyboard = [
@@ -52,16 +48,7 @@ def get_main_reply_keyboard(user_id: int) -> ReplyKeyboardMarkup:
 
 
 
-def get_userbot_reply_keyboard() -> ReplyKeyboardMarkup:
-    """Создает клавиатуру для userbot"""
-    keyboard = [
-        ["🚀 Запустить", "⏹️ Остановить"],
-        ["➕ Присоединиться", "➖ Покинуть"],
-        ["📊 Статус", "🔄 Сброс сессии"],
-        ["🔙 Главное меню"]
-    ]
-    
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+
 
 # ===========================================
 # ESSENTIAL COMMANDS (минимум)
@@ -244,6 +231,115 @@ async def submit_post_command(update: Update, context: CallbackContext) -> None:
         logger.error(f"Ошибка при отправке поста: {e}")
         await update.message.reply_text("❌ Произошла ошибка при отправке поста.")
 
+async def admin_add_command(update: Update, context: CallbackContext) -> None:
+    """Add administrator by username - for compatibility."""
+    user_id = update.effective_user.id
+    
+    if not Storage.is_admin(user_id):
+        await update.message.reply_text("❌ У вас нет прав администратора.")
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "❌ <b>Укажите username</b>\n\n"
+            "Использование: /admin_add @username",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    username = context.args[0].strip().lstrip('@')
+    
+    try:
+        # Пытаемся получить пользователя по username
+        chat_member = await context.bot.get_chat(f"@{username}")
+        admin_id = chat_member.id
+        
+        if admin_id not in Storage.bot_config.admin_ids:
+            Storage.add_admin(admin_id)
+            
+            await update.message.reply_text(
+                f"✅ <b>Администратор добавлен</b>\n\n"
+                f"👤 <b>Username:</b> @{username}\n"
+                f"🆔 <b>ID:</b> {admin_id}\n"
+                f"📱 <b>Имя:</b> {chat_member.first_name or 'Не указано'}",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await update.message.reply_text(
+                f"⚠️ Пользователь @{username} уже является администратором.",
+                parse_mode=ParseMode.HTML
+            )
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ <b>Не удалось найти пользователя</b>\n\n"
+            f"Username: @{username}\n\n"
+            f"💡 Убедитесь, что:\n"
+            f"• Username написан правильно\n"
+            f"• Пользователь существует\n"
+            f"• Пользователь взаимодействовал с ботом ранее",
+            parse_mode=ParseMode.HTML
+        )
+
+async def admin_remove_command(update: Update, context: CallbackContext) -> None:
+    """Remove administrator by ID or username - for compatibility."""
+    user_id = update.effective_user.id
+    
+    if not Storage.is_admin(user_id):
+        await update.message.reply_text("❌ У вас нет прав администратора.")
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "❌ <b>Укажите ID или username</b>\n\n"
+            "Использование: /admin_remove user_id или /admin_remove @username",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    arg = context.args[0].strip()
+    
+    # Try to parse as ID
+    if arg.isdigit():
+        admin_id = int(arg)
+        
+        if admin_id == user_id:
+            await update.message.reply_text("❌ Нельзя удалить себя из администраторов.")
+            return
+        
+        if admin_id in Storage.bot_config.admin_ids:
+            Storage.remove_admin(admin_id)
+            await update.message.reply_text(
+                f"✅ <b>Администратор удален</b>\n\n"
+                f"ID: {admin_id}",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await update.message.reply_text(f"❌ Пользователь {admin_id} не является администратором.")
+    else:
+        # Try as username
+        username = arg.lstrip('@')
+        
+        try:
+            chat_member = await context.bot.get_chat(f"@{username}")
+            admin_id = chat_member.id
+            
+            if admin_id == user_id:
+                await update.message.reply_text("❌ Нельзя удалить себя из администраторов.")
+                return
+            
+            if admin_id in Storage.bot_config.admin_ids:
+                Storage.remove_admin(admin_id)
+                await update.message.reply_text(
+                    f"✅ <b>Администратор удален</b>\n\n"
+                    f"Username: @{username}\n"
+                    f"ID: {admin_id}",
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await update.message.reply_text(f"❌ Пользователь @{username} не является администратором.")
+        except Exception:
+            await update.message.reply_text(f"❌ Не удалось найти пользователя @{username}.")
+
 # ===========================================
 # REPLY BUTTON HANDLERS
 # ===========================================
@@ -297,14 +393,7 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
     
 
     
-    elif text == "🤖 Userbot":
-        if USERBOT_ENABLED and Storage.is_admin(user_id):
-            await show_userbot_interface(update, context)
-        elif not USERBOT_ENABLED:
-            await update.message.reply_text("❌ Userbot отключен в конфигурации.")
-        else:
-            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
-        return True
+
     
     elif text == "ℹ️ Справка":
         await show_help_interface(update, context)
@@ -330,48 +419,7 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
     
 
     
-    # Userbot buttons
-    elif text == "🚀 Запустить":
-        if USERBOT_ENABLED:
-            await handle_userbot_start(update, context)
-        else:
-            await update.message.reply_text("❌ Userbot отключен.")
-        return True
-    
-    elif text == "⏹️ Остановить":
-        if USERBOT_ENABLED:
-            await handle_userbot_stop(update, context)
-        else:
-            await update.message.reply_text("❌ Userbot отключен.")
-        return True
-    
-    elif text == "➕ Присоединиться":
-        if USERBOT_ENABLED:
-            await show_userbot_join_interface(update, context)
-        else:
-            await update.message.reply_text("❌ Userbot отключен.")
-        return True
-    
-    elif text == "➖ Покинуть":
-        if USERBOT_ENABLED:
-            await show_userbot_leave_interface(update, context)
-        else:
-            await update.message.reply_text("❌ Userbot отключен.")
-        return True
-    
-    elif text == "📊 Статус":
-        if USERBOT_ENABLED:
-            await show_userbot_status(update, context)
-        else:
-            await update.message.reply_text("❌ Userbot отключен.")
-        return True
-    
-    elif text == "🔄 Сброс сессии":
-        if USERBOT_ENABLED:
-            await handle_userbot_reset_session(update, context)
-        else:
-            await update.message.reply_text("❌ Userbot отключен.")
-        return True
+
     
     # Back to main menu
     elif text == "🔙 Главное меню":
@@ -405,25 +453,53 @@ async def show_monitoring_interface(update: Update, context: CallbackContext, us
         f"• Всего источников: {total_sources}\n"
         f"• Чатов: {len(user.monitored_chats)}\n"
         f"• Каналов: {len(user.monitored_channels)}\n"
-        f"• Порог важности: {Storage.bot_config.importance_threshold} (глобальный)\n\n"
-        f"💡 <b>Как добавить источник:</b>\n"
+        f"• Порог важности: {Storage.bot_config.importance_threshold} (глобальный)\n"
+    )
+    
+    # Добавляем информацию о userbot, если включен
+    if USERBOT_ENABLED:
+        try:
+            userbot = get_userbot()
+            if userbot.is_running:
+                monitored_userbot = userbot.get_monitored_sources()
+                monitoring_text += f"\n\n🤖 <b>Скрытый мониторинг (Userbot):</b>\n"
+                monitoring_text += f"• Статус: ✅ Активен\n"
+                monitoring_text += f"• Источников: {len(monitored_userbot)}\n"
+            else:
+                monitoring_text += f"\n\n🤖 <b>Скрытый мониторинг (Userbot):</b>\n"
+                monitoring_text += f"• Статус: ❌ Неактивен\n"
+        except:
+            monitoring_text += f"\n\n🤖 <b>Скрытый мониторинг:</b> Недоступен\n"
+    
+    monitoring_text += (
+        f"\n💡 <b>Как добавить источник:</b>\n"
         f"1. Перешлите сообщение из чата/канала боту\n"
-        f"2. Выберите действие в предложенном меню\n\n"
-        f"🤖 <b>Или используйте Userbot для скрытого мониторинга</b>"
+        f"2. Выберите действие в предложенном меню"
     )
     
     keyboard = [
         [
             InlineKeyboardButton("📋 Список источников", callback_data="monitoring_list"),
             InlineKeyboardButton("🗑️ Удалить источник", callback_data="monitoring_remove")
-        ],
-        [
-            InlineKeyboardButton("🧹 Очистить все", callback_data="monitoring_clear")
         ]
     ]
     
+    # Добавляем кнопки userbot, если он доступен
     if USERBOT_ENABLED:
-        keyboard.append([InlineKeyboardButton("🤖 Перейти к Userbot", callback_data="goto_userbot")])
+        userbot = get_userbot()
+        if userbot.is_running:
+            keyboard.append([
+                InlineKeyboardButton("⏹️ Остановить Userbot", callback_data="userbot_stop"),
+                InlineKeyboardButton("➕ Добавить в Userbot", callback_data="userbot_join")
+            ])
+        else:
+            keyboard.append([
+                InlineKeyboardButton("🚀 Запустить Userbot", callback_data="userbot_start")
+            ])
+    
+    keyboard.append([
+        InlineKeyboardButton("🧹 Очистить все", callback_data="monitoring_clear")
+    ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -518,8 +594,7 @@ async def show_settings_interface(update: Update, context: CallbackContext, user
         ])
     
     keyboard.append([
-        InlineKeyboardButton("🗑️ Очистить данные", callback_data="settings_clear"),
-        InlineKeyboardButton("🔄 Сброс настроек", callback_data="settings_reset")
+        InlineKeyboardButton("🗑️ Очистить данные", callback_data="settings_clear")
     ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -572,7 +647,7 @@ async def show_statistics_interface(update: Update, context: CallbackContext, us
             parse_mode=ParseMode.HTML
         )
 
-async def show_keywords_interface(update: Update, context: CallbackContext, user: UserPreferences) -> None:
+async def show_keywords_interface(query, context: CallbackContext, user: UserPreferences) -> None:
     """Show keywords management interface."""
     keywords_text = (
         f"🔑 <b>Управление ключевыми словами</b>\n\n"
@@ -618,11 +693,22 @@ async def show_keywords_interface(update: Update, context: CallbackContext, user
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
-        keywords_text,
-        reply_markup=reply_markup,
-        parse_mode=ParseMode.HTML
-    )
+    # Check if this is a callback query or regular message
+    if hasattr(query, 'message'):
+        # Called from a callback query (button press)
+        await query.message.delete()
+        await query.message.reply_text(
+            keywords_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        # Called from a regular message
+        await query.reply_text(
+            keywords_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
 
 async def show_important_channel_info(update: Update, context: CallbackContext) -> None:
     """Show information about important messages channel."""
@@ -917,16 +1003,23 @@ async def show_admins_management(update: Update, context: CallbackContext) -> No
             admins_text += f"{i}. ID: {admin_id} (не удалось получить информацию)\n"
     
     admins_text += (
-        f"\n💡 <b>Для добавления/удаления отправьте:</b>\n"
-        f"• <code>+123456789</code> - добавить админа\n"
-        f"• <code>-123456789</code> - удалить админа\n\n"
-        f"🔧 <b>Или используйте команды:</b>\n"
-        f"/admin_add user_id\n"
-        f"/admin_remove user_id"
+        f"\n💡 <b>Для добавления администратора отправьте его username</b>\n"
+        f"Например: @username или username (без @)\n"
     )
+    
+    # Создаем инлайн кнопки
+    keyboard = [
+        [
+            InlineKeyboardButton("➕ Добавить админа", callback_data="admin_add_start"),
+            InlineKeyboardButton("➖ Удалить админа", callback_data="admin_remove_start")
+        ]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
         admins_text,
+        reply_markup=reply_markup,
         parse_mode=ParseMode.HTML
     )
 
@@ -1243,8 +1336,63 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
             )
         return
     
+    # Handle admin username input (проверяем в первую очередь для админов с активным состоянием)
+    if Storage.is_admin(user_id) and user.current_state == "admin_add_username":
+        # Сбрасываем состояние
+        user.current_state = None
+        Storage.update_user(user)
+        
+        # Очищаем username от @
+        username = text.strip().lstrip('@')
+        
+        if not username:
+            await update.message.reply_text("❌ Username не может быть пустым.")
+            return
+        
+        try:
+            # Пытаемся получить пользователя по username
+            chat_member = await context.bot.get_chat(f"@{username}")
+            admin_id = chat_member.id
+            
+            if admin_id not in Storage.bot_config.admin_ids:
+                Storage.add_admin(admin_id)
+                
+                await update.message.reply_text(
+                    f"✅ <b>Администратор добавлен</b>\n\n"
+                    f"👤 <b>Username:</b> @{username}\n"
+                    f"🆔 <b>ID:</b> {admin_id}\n"
+                    f"📱 <b>Имя:</b> {chat_member.first_name or 'Не указано'}",
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await update.message.reply_text(
+                    f"⚠️ Пользователь @{username} уже является администратором.",
+                    parse_mode=ParseMode.HTML
+                )
+        except Exception as e:
+            await update.message.reply_text(
+                f"❌ <b>Не удалось найти пользователя</b>\n\n"
+                f"Username: @{username}\n\n"
+                f"💡 Убедитесь, что:\n"
+                f"• Username написан правильно\n"
+                f"• Пользователь существует\n"
+                f"• Пользователь взаимодействовал с ботом ранее",
+                parse_mode=ParseMode.HTML
+            )
+        return
+    
+    # Handle channel configuration for admins (highest priority for admins)
+    if Storage.is_admin(user_id) and user.current_state == "channel_setup" and (
+        text.startswith('@') or 
+        text.lstrip('-').isdigit() or 
+        't.me/' in text or
+        text.startswith('http')
+    ):
+        await handle_channel_config_text(update, context, text)
+        return
+    
     # Handle keyword additions
-    if text.startswith('+') and len(text) > 1:
+    if text.startswith('+') and len(text) > 1 and not text[1:].isdigit():
         if Storage.is_admin(user_id):
             keyword = text[1:].strip().lower()
             if keyword not in user.keywords:
@@ -1271,165 +1419,61 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
             await update.message.reply_text("❌ Эта функция доступна только администраторам.")
         return
     
-    # Handle admin addition (for admins only)
-    elif text.startswith('+') and text[1:].isdigit():
-        if Storage.is_admin(user_id):
-            admin_id = int(text[1:])
-            if admin_id not in Storage.bot_config.admin_ids:
-                Storage.add_admin(admin_id)
+    # Handle admin threshold setup
+    if Storage.is_admin(user_id) and user.current_state == "admin_threshold_setup":
+        try:
+            # Проверяем, что это число
+            threshold_text = text.replace(',', '.')  # Поддержка запятой как разделителя
+            threshold = float(threshold_text)
+            
+            if 0 <= threshold <= 1:
+                config = Storage.bot_config
+                config.importance_threshold = threshold
+                Storage.update_config(config)
                 
-                # Получаем информацию о добавленном пользователе
-                try:
-                    chat_member = await context.bot.get_chat(admin_id)
-                    username = chat_member.username
-                    first_name = chat_member.first_name
-                    last_name = chat_member.last_name
-                    
-                    if username:
-                        display_name = f"@{username}"
-                    elif first_name:
-                        display_name = f"{first_name}"
-                        if last_name:
-                            display_name += f" {last_name}"
-                    else:
-                        display_name = "Неизвестный пользователь"
-                    
-                    await update.message.reply_text(f"✅ Пользователь {display_name} (ID: {admin_id}) добавлен в администраторы.")
-                except Exception:
-                    await update.message.reply_text(f"✅ Пользователь {admin_id} добавлен в администраторы.")
-            else:
-                await update.message.reply_text(f"⚠️ Пользователь {admin_id} уже является администратором.")
-        else:
-            await update.message.reply_text("❌ У вас нет прав для добавления администраторов.")
-        return
-    
-    # Handle admin removal (for admins only)
-    elif text.startswith('-') and text[1:].isdigit():
-        if Storage.is_admin(user_id):
-            admin_id = int(text[1:])
-            if admin_id == user_id:
-                await update.message.reply_text("❌ Нельзя удалить себя из администраторов.")
-                return
-            if admin_id in Storage.bot_config.admin_ids:
-                Storage.remove_admin(admin_id)
+                # Сбрасываем состояние пользователя
+                user.current_state = None
+                Storage.update_user(user)
                 
-                # Получаем информацию об удаленном пользователе
-                try:
-                    chat_member = await context.bot.get_chat(admin_id)
-                    username = chat_member.username
-                    first_name = chat_member.first_name
-                    last_name = chat_member.last_name
-                    
-                    if username:
-                        display_name = f"@{username}"
-                    elif first_name:
-                        display_name = f"{first_name}"
-                        if last_name:
-                            display_name += f" {last_name}"
-                    else:
-                        display_name = "Неизвестный пользователь"
-                    
-                    await update.message.reply_text(f"✅ Пользователь {display_name} (ID: {admin_id}) удален из администраторов.")
-                except Exception:
-                    await update.message.reply_text(f"✅ Пользователь {admin_id} удален из администраторов.")
+                await update.message.reply_text(
+                    f"✅ <b>Глобальный порог важности установлен:</b> {threshold}\n\n"
+                    f"💡 Теперь все пользователи будут получать уведомления о сообщениях с важностью выше {threshold}",
+                    parse_mode=ParseMode.HTML
+                )
             else:
-                await update.message.reply_text(f"❌ Пользователь {admin_id} не является администратором.")
-        else:
-            await update.message.reply_text("❌ У вас нет прав для удаления администраторов.")
-        return
-    
-    # Handle admin management in admin interface
-    elif Storage.is_admin(user_id) and user.current_state == "admin_management":
-        if text.startswith('+') and text[1:].isdigit():
-            admin_id = int(text[1:])
-            if admin_id not in Storage.bot_config.admin_ids:
-                Storage.add_admin(admin_id)
-                
-                # Получаем информацию о добавленном пользователе
-                try:
-                    chat_member = await context.bot.get_chat(admin_id)
-                    username = chat_member.username
-                    first_name = chat_member.first_name
-                    last_name = chat_member.last_name
-                    
-                    if username:
-                        display_name = f"@{username}"
-                    elif first_name:
-                        display_name = f"{first_name}"
-                        if last_name:
-                            display_name += f" {last_name}"
-                    else:
-                        display_name = "Неизвестный пользователь"
-                    
-                    await update.message.reply_text(f"✅ Пользователь {display_name} (ID: {admin_id}) добавлен в администраторы.")
-                except Exception:
-                    await update.message.reply_text(f"✅ Пользователь {admin_id} добавлен в администраторы.")
-            else:
-                await update.message.reply_text(f"⚠️ Пользователь {admin_id} уже является администратором.")
-        elif text.startswith('-') and text[1:].isdigit():
-            admin_id = int(text[1:])
-            if admin_id == user_id:
-                await update.message.reply_text("❌ Нельзя удалить себя из администраторов.")
-            elif admin_id in Storage.bot_config.admin_ids:
-                Storage.remove_admin(admin_id)
-                
-                # Получаем информацию об удаленном пользователе
-                try:
-                    chat_member = await context.bot.get_chat(admin_id)
-                    username = chat_member.username
-                    first_name = chat_member.first_name
-                    last_name = chat_member.last_name
-                    
-                    if username:
-                        display_name = f"@{username}"
-                    elif first_name:
-                        display_name = f"{first_name}"
-                        if last_name:
-                            display_name += f" {last_name}"
-                    else:
-                        display_name = "Неизвестный пользователь"
-                    
-                    await update.message.reply_text(f"✅ Пользователь {display_name} (ID: {admin_id}) удален из администраторов.")
-                except Exception:
-                    await update.message.reply_text(f"✅ Пользователь {admin_id} удален из администраторов.")
-            else:
-                await update.message.reply_text(f"❌ Пользователь {admin_id} не является администратором.")
-        else:
+                await update.message.reply_text(
+                    "❌ <b>Неверное значение</b>\n\n"
+                    "Порог должен быть числом от 0.0 до 1.0",
+                    parse_mode=ParseMode.HTML
+                )
+        except ValueError:
             await update.message.reply_text(
-                "❌ Неверный формат. Используйте:\n"
-                "• <code>+123456789</code> - добавить админа\n"
-                "• <code>-123456789</code> - удалить админа",
+                "❌ <b>Неверный формат</b>\n\n"
+                "Отправьте число от 0.0 до 1.0\n"
+                "Например: 0.7",
                 parse_mode=ParseMode.HTML
             )
         return
     
-    # Handle channel configuration for admins (highest priority for admins)
-    if Storage.is_admin(user_id) and user.current_state == "channel_setup" and (
-        text.startswith('@') or 
-        text.lstrip('-').isdigit() or 
-        't.me/' in text or
-        text.startswith('http')
-    ):
-        await handle_channel_config_text(update, context, text)
-        return
-    
-    # Handle admin threshold setup
-    if Storage.is_admin(user_id) and user.current_state == "admin_threshold_setup" and text.replace('.', '').isdigit() and 0 <= float(text) <= 1:
-        threshold = float(text)
-        config = Storage.bot_config
-        config.importance_threshold = threshold
-        Storage.update_config(config)
-        
-        # Сбрасываем состояние пользователя
-        user.current_state = None
-        Storage.update_user(user)
-        
-        await update.message.reply_text(
-            f"✅ <b>Глобальный порог важности установлен:</b> {threshold}\n\n"
-            f"💡 Теперь все пользователи будут получать уведомления о сообщениях с важностью выше {threshold}",
-            parse_mode=ParseMode.HTML
-        )
-        return
+    # Handle threshold input without state (direct number input)
+    elif Storage.is_admin(user_id) and text.replace(',', '.').replace('.', '').isdigit() and len(text) <= 4:
+        try:
+            threshold_text = text.replace(',', '.')
+            threshold = float(threshold_text)
+            
+            if 0 <= threshold <= 1:
+                config = Storage.bot_config
+                config.importance_threshold = threshold
+                Storage.update_config(config)
+                
+                await update.message.reply_text(
+                    f"✅ <b>Глобальный порог важности установлен:</b> {threshold}\n\n"
+                    f"💡 Сообщения с оценкой выше {threshold} будут считаться важными",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+        except:
+            pass  # Продолжаем обработку как обычное сообщение
     
     # Handle userbot join links (priority for userbot functionality)
     if ('t.me/' in text or text.startswith('@')) and USERBOT_ENABLED:
@@ -1859,7 +1903,7 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
     
     # Settings callbacks
     elif data == "settings_keywords":
-        await show_keywords_interface(update, context, user)
+        await show_keywords_interface(query, context, user)
     
     elif data == "settings_clear":
         keyboard = [
@@ -2161,9 +2205,9 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
                 
                 await query.edit_message_text(
                     f"✅ <b>Канал настроен успешно!</b>\n\n"
-                    f"📋 <b>ID канала:</b> {channel_id}\n"
-                    f"📝 <b>Название:</b> {html.escape(chat.title)}\n"
-                    f"🏷️ <b>Username:</b> @{html.escape(chat.username) if chat.username else 'отсутствует'}",
+                            f"📋 <b>ID канала:</b> {channel_id}\n"
+        f"📝 <b>Название:</b> {html.escape(chat.title)}\n"
+        f"🏷️ <b>Username:</b> @{html.escape(chat.username or 'отсутствует')}",
                     parse_mode=ParseMode.HTML
                 )
             except Exception as e:
@@ -2341,12 +2385,158 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
     elif data == "help_faq":
         await show_faq_help(query)
     
-    # Navigation callbacks
-    elif data == "goto_userbot":
-        if USERBOT_ENABLED:
-            await show_userbot_interface(update, context)
+    # Admin management callbacks
+    elif data == "admin_add_start":
+        if Storage.is_admin(user_id):
+            # Устанавливаем состояние для администратора
+            user = Storage.get_user(user_id)
+            user.current_state = "admin_add_username"
+            Storage.update_user(user)
+            
+            await query.edit_message_text(
+                "➕ <b>Добавление администратора</b>\n\n"
+                "💡 <b>Отправьте username пользователя:</b>\n"
+                "• @username\n"
+                "• username (без @)\n\n"
+                "❌ Для отмены нажмите /menu",
+                parse_mode=ParseMode.HTML
+            )
+    
+    elif data == "admin_remove_start":
+        if Storage.is_admin(user_id):
+            config = Storage.bot_config
+            
+            if len(config.admin_ids) <= 1:
+                await query.edit_message_text(
+                    "❌ <b>Невозможно удалить последнего администратора</b>\n\n"
+                    "В системе должен оставаться хотя бы один администратор.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            
+            keyboard = []
+            
+            # Создаем кнопки для каждого администратора
+            for admin_id in config.admin_ids:
+                if admin_id == user_id:
+                    continue  # Не показываем кнопку для удаления себя
+                
+                try:
+                    chat_member = await context.bot.get_chat(admin_id)
+                    if chat_member.username:
+                        display_name = f"@{chat_member.username}"
+                    elif chat_member.first_name:
+                        display_name = chat_member.first_name
+                    else:
+                        display_name = f"ID: {admin_id}"
+                    
+                    keyboard.append([
+                        InlineKeyboardButton(f"❌ {display_name}", callback_data=f"admin_remove_{admin_id}")
+                    ])
+                except:
+                    keyboard.append([
+                        InlineKeyboardButton(f"❌ ID: {admin_id}", callback_data=f"admin_remove_{admin_id}")
+                    ])
+            
+            keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="admin_back")])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                "➖ <b>Удаление администратора</b>\n\n"
+                "💡 Выберите администратора для удаления:",
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.HTML
+            )
+    
+    elif data.startswith("admin_remove_"):
+        if Storage.is_admin(user_id):
+            admin_to_remove = int(data.replace("admin_remove_", ""))
+            
+            if admin_to_remove == user_id:
+                await query.edit_message_text("❌ Нельзя удалить себя из администраторов.")
+                return
+            
+            if admin_to_remove in Storage.bot_config.admin_ids:
+                Storage.remove_admin(admin_to_remove)
+                await query.edit_message_text(
+                    f"✅ <b>Администратор удален</b>\n\n"
+                    f"ID: {admin_to_remove}",
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await query.edit_message_text("❌ Пользователь не является администратором.")
+    
+    elif data == "admin_back":
+        if Storage.is_admin(user_id):
+            await query.message.delete()
+            # Создаем фиктивный update для show_admins_management
+            await show_admins_management(update, context)
+    
+    # Userbot callbacks from monitoring interface
+    elif data == "userbot_start":
+        if USERBOT_ENABLED and Storage.is_admin(user_id):
+            try:
+                userbot = get_userbot()
+                if userbot.is_running:
+                    await query.answer("⚠️ Userbot уже запущен.")
+                    return
+                
+                await start_userbot()
+                await query.answer("✅ Userbot запущен!")
+                
+                # Обновляем интерфейс мониторинга
+                await query.message.delete()
+                await show_monitoring_interface(update, context, user)
+                
+            except Exception as e:
+                logger.error(f"Ошибка запуска userbot: {e}")
+                await query.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
         else:
-            await query.edit_message_text("❌ Userbot отключен.")
+            await query.answer("❌ Недоступно", show_alert=True)
+    
+    elif data == "userbot_stop":
+        if USERBOT_ENABLED and Storage.is_admin(user_id):
+            try:
+                userbot = get_userbot()
+                if not userbot.is_running:
+                    await query.answer("⚠️ Userbot уже остановлен.")
+                    return
+                
+                await stop_userbot()
+                await query.answer("⏹️ Userbot остановлен!")
+                
+                # Обновляем интерфейс мониторинга
+                await query.message.delete()
+                await show_monitoring_interface(update, context, user)
+                
+            except Exception as e:
+                logger.error(f"Ошибка остановки userbot: {e}")
+                await query.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+        else:
+            await query.answer("❌ Недоступно", show_alert=True)
+    
+    elif data == "userbot_join":
+        if USERBOT_ENABLED and Storage.is_admin(user_id):
+            # Устанавливаем состояние пользователя для ввода ссылки
+            user.current_state = "userbot_join"
+            Storage.update_user(user)
+            
+            await query.edit_message_text(
+                "➕ <b>Добавление источника в скрытый мониторинг</b>\n\n"
+                "💡 <b>Отправьте ссылку на канал или чат:</b>\n"
+                "• https://t.me/channel_name\n"
+                "• @channel_name\n"
+                "• Ссылку-приглашение\n\n"
+                "🔒 <b>Поддерживаются:</b>\n"
+                "• Публичные каналы\n"
+                "• Приватные каналы (по ссылке-приглашению)\n"
+                "• Группы и супергруппы\n\n"
+                "❌ Для отмены нажмите /menu",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await query.answer("❌ Недоступно", show_alert=True)
     
     # Monitoring callbacks for forwarded messages
     elif data.startswith("add_passive_monitoring_"):
@@ -2420,22 +2610,49 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
     elif data == "skip_monitoring":
         await query.edit_message_text("❌ Мониторинг пропущен.")
     
-    elif data.startswith("submit_forwarded_"):
-        message_id = data.replace("submit_forwarded_", "")
+    elif data.startswith("submit_forwarded_") or data.startswith("submit_for_moderation_"):
+        # Get message text from the replied message
+        message_text = ""
+        source_info = "Пересланное сообщение"
         
-        # Get the original forwarded message
-        try:
-            # This is a simplified approach - in a real implementation,
-            # you might want to store the message content temporarily
-            await query.edit_message_text(
-                "📝 <b>Функция в разработке</b>\n\n"
-                "Используйте кнопку 'Предложить пост' в главном меню "
-                "или команду /submit_post для отправки поста на модерацию.",
-                parse_mode=ParseMode.HTML
-            )
-        except Exception as e:
-            logger.error(f"Ошибка при обработке submit_forwarded: {e}")
-            await query.edit_message_text("❌ Ошибка при отправке поста.")
+        if query.message and query.message.reply_to_message:
+            if query.message.reply_to_message.text:
+                message_text = query.message.reply_to_message.text
+            elif query.message.reply_to_message.caption:
+                message_text = query.message.reply_to_message.caption
+                
+            # Get source info if available
+            if hasattr(query.message.reply_to_message, 'forward_origin') and query.message.reply_to_message.forward_origin:
+                if hasattr(query.message.reply_to_message.forward_origin, 'chat'):
+                    source_chat = query.message.reply_to_message.forward_origin.chat
+                    source_info = f"Пересланное из: {source_chat.title or 'Неизвестный чат'}"
+                elif hasattr(query.message.reply_to_message.forward_origin, 'sender_user'):
+                    sender = query.message.reply_to_message.forward_origin.sender_user
+                    source_info = f"Пересланное от: {sender.full_name}"
+                elif hasattr(query.message.reply_to_message.forward_origin, 'sender_user_name'):
+                    source_info = f"Пересланное от: {query.message.reply_to_message.forward_origin.sender_user_name}"
+        
+        if message_text:
+            try:
+                post_id = await AdminService.submit_post_for_review(user_id, message_text, source_info)
+                
+                # Notify admins
+                post = Storage.get_pending_post(post_id)
+                if post:
+                    await AdminService.notify_admins_about_new_post(context.bot, post)
+                
+                await query.edit_message_text(
+                    f"✅ <b>Пост отправлен на модерацию!</b>\n\n"
+                    f"📋 <b>ID поста:</b> {post_id}\n"
+                    f"⏳ <b>Статус:</b> Ожидает рассмотрения\n\n"
+                    f"💡 Вы получите уведомление о результатах модерации.",
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception as e:
+                logger.error(f"Ошибка при отправке поста на модерацию: {e}")
+                await query.edit_message_text(f"❌ Ошибка при отправке поста: {html.escape(str(e))}")
+        else:
+            await query.edit_message_text("❌ Не удалось получить текст сообщения.")
     
     # Source removal callbacks
     elif data.startswith("remove_chat_"):
@@ -2518,40 +2735,80 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
 
 async def show_monitoring_list(query, context: CallbackContext, user: UserPreferences) -> None:
     """Show list of monitored sources."""
-    if not user.monitored_chats and not user.monitored_channels:
-        await query.edit_message_text("❌ Вы не мониторите ни одного источника.")
+    has_regular_monitoring = user.monitored_chats or user.monitored_channels
+    has_userbot_monitoring = False
+    
+    # Проверяем userbot мониторинг
+    userbot_sources = []
+    if USERBOT_ENABLED:
+        try:
+            userbot = get_userbot()
+            if userbot.is_running:
+                userbot_sources = list(userbot.get_monitored_sources())
+                has_userbot_monitoring = bool(userbot_sources)
+        except:
+            pass
+    
+    if not has_regular_monitoring and not has_userbot_monitoring:
+        await query.edit_message_text("❌ Нет источников в мониторинге.")
         return
     
     list_text = "📋 <b>Список мониторимых источников:</b>\n\n"
     
-    if user.monitored_chats:
-        list_text += "💬 <b>Чаты:</b>\n"
-        for chat_id in user.monitored_chats:
+    # Обычный мониторинг (пересылка сообщений)
+    if has_regular_monitoring:
+        list_text += "📱 <b>Обычный мониторинг (пересылка):</b>\n\n"
+        
+        if user.monitored_chats:
+            list_text += "💬 <b>Чаты:</b>\n"
+            for chat_id in user.monitored_chats:
+                try:
+                    chat = await context.bot.get_chat(chat_id)
+                    chat_title = html.escape(chat.title or "Без названия")
+                    chat_link = f"https://t.me/{chat.username}" if chat.username else ""
+                    if chat_link:
+                        list_text += f"• <a href='{chat_link}'>{chat_title}</a> ({chat_id})\n"
+                    else:
+                        list_text += f"• {chat_title} ({chat_id})\n"
+                except Exception:
+                    list_text += f"• {chat_id}\n"
+            list_text += "\n"
+        
+        if user.monitored_channels:
+            list_text += "📢 <b>Каналы:</b>\n"
+            for channel_id in user.monitored_channels:
+                try:
+                    channel = await context.bot.get_chat(channel_id)
+                    channel_title = html.escape(channel.title or "Без названия")
+                    channel_link = f"https://t.me/{channel.username}" if channel.username else ""
+                    if channel_link:
+                        list_text += f"• <a href='{channel_link}'>{channel_title}</a> ({channel_id})\n"
+                    else:
+                        list_text += f"• {channel_title} ({channel_id})\n"
+                except Exception:
+                    list_text += f"• {channel_id}\n"
+            list_text += "\n"
+    
+    # Userbot мониторинг
+    if has_userbot_monitoring:
+        list_text += "🤖 <b>Скрытый мониторинг (Userbot):</b>\n"
+        list_text += f"<i>Всего источников: {len(userbot_sources)}</i>\n\n"
+        
+        # Показываем первые 10 источников
+        for source_id in userbot_sources[:10]:
             try:
-                chat = await context.bot.get_chat(chat_id)
+                chat = await context.bot.get_chat(source_id)
                 chat_title = html.escape(chat.title or "Без названия")
                 chat_link = f"https://t.me/{chat.username}" if chat.username else ""
                 if chat_link:
-                    list_text += f"• <a href='{chat_link}'>{chat_title}</a> ({chat_id})\n"
+                    list_text += f"• <a href='{chat_link}'>{chat_title}</a> ({source_id})\n"
                 else:
-                    list_text += f"• {chat_title} ({chat_id})\n"
+                    list_text += f"• {chat_title} ({source_id})\n"
             except Exception:
-                list_text += f"• {chat_id}\n"
-        list_text += "\n"
-    
-    if user.monitored_channels:
-        list_text += "📢 <b>Каналы:</b>\n"
-        for channel_id in user.monitored_channels:
-            try:
-                channel = await context.bot.get_chat(channel_id)
-                channel_title = html.escape(channel.title or "Без названия")
-                channel_link = f"https://t.me/{channel.username}" if channel.username else ""
-                if channel_link:
-                    list_text += f"• <a href='{channel_link}'>{channel_title}</a> ({channel_id})\n"
-                else:
-                    list_text += f"• {channel_title} ({channel_id})\n"
-            except Exception:
-                list_text += f"• {channel_id}\n"
+                list_text += f"• ID: {source_id}\n"
+        
+        if len(userbot_sources) > 10:
+            list_text += f"\n<i>... и еще {len(userbot_sources) - 10} источников</i>"
     
     await query.edit_message_text(list_text, parse_mode=ParseMode.HTML)
 
@@ -2750,98 +3007,103 @@ async def handle_message_forwarded(update: Update, context: CallbackContext) -> 
                 is_already_monitored = chat_id in user.monitored_chats
                 monitoring_type = "чат"
             
-            # Always analyze forwarded messages from monitored sources
-            if is_already_monitored:
-                # Process the message to analyze its importance
-                message = Message(
-                    message_id=update.message.message_id,
-                    chat_id=chat_id,
-                    chat_title=chat_title,
-                    text=update.message.text or update.message.caption or "",
-                    date=datetime.now(),
-                    is_channel=is_channel
-                )
-                
-                # Extract sender info if available
-                if hasattr(update.message.forward_origin, 'sender_user') and update.message.forward_origin.sender_user:
-                    message.sender_id = update.message.forward_origin.sender_user.id
-                    message.sender_name = update.message.forward_origin.sender_user.full_name
-                elif hasattr(update.message.forward_origin, 'sender_user_name'):
-                    message.sender_name = update.message.forward_origin.sender_user_name
-                
-                logger.info(f"Анализирую пересланное сообщение: {message.text[:50]}...")
-                
-                # Analyze message importance
-                importance_score = evaluate_message_importance(message, user)
-                message.importance_score = importance_score
-                
-                logger.info(f"Оценка важности: {importance_score:.2f}, порог: {Storage.bot_config.importance_threshold}")
-                
-                # Check if the message is important enough to notify the user
-                if importance_score >= Storage.bot_config.importance_threshold:
-                    # Create keyboard with option to submit for publication
-                    keyboard = [
-                        [InlineKeyboardButton("📝 Предложить для публикации", callback_data=f"submit_forwarded_{update.message.message_id}")]
-                    ]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    
-                    await update.message.reply_text(
-                        f"🔔 <b>ВАЖНОЕ СООБЩЕНИЕ ОБНАРУЖЕНО</b>\n\n"
-                        f"{message.to_user_notification()}\n\n"
-                        f"📋 <i>Источник: Пассивный мониторинг (пересланное сообщение)</i>\n\n"
-                        f"💡 <b>Хотите предложить это сообщение для публикации в канале?</b>",
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=reply_markup
-                    )
-                    
-                    # Process important message for potential publication
-                    try:
-                        published = await AdminService.process_important_message(context.bot, message, importance_score)
-                        if published:
-                            logger.info(f"Важное пересланное сообщение автоматически опубликовано в канале (оценка: {importance_score:.2f})")
-                    except Exception as e:
-                        logger.error(f"Ошибка при обработке важного сообщения для публикации: {e}")
-                else:
-                    # Also offer to submit less important messages
-                    keyboard = [
-                        [InlineKeyboardButton("📝 Всё равно предложить для публикации", callback_data=f"submit_forwarded_{update.message.message_id}")]
-                    ]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    
-                    await update.message.reply_text(
-                        f"📊 <b>Анализ завершен</b>\n\n"
-                        f"Сообщение из {chat_title} имеет оценку важности <b>{importance_score:.2f}</b>, "
-                                            f"что ниже глобального порога <b>{Storage.bot_config.importance_threshold}</b>.\n\n"
-                    f"💡 Администраторы могут изменить глобальный порог важности.",
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=reply_markup
-                    )
-                return
+            # Always analyze forwarded messages (both monitored and non-monitored)
+            # Process the message to analyze its importance
+            message = Message(
+                message_id=update.message.message_id,
+                chat_id=chat_id,
+                chat_title=chat_title,
+                text=update.message.text or update.message.caption or "",
+                date=datetime.now(),
+                is_channel=is_channel
+            )
             
-            # Offer to add to passive monitoring
-            keyboard = [
-                [InlineKeyboardButton("✅ Добавить в мониторинг", callback_data=f"add_passive_monitoring_{chat_id}_{'channel' if is_channel else 'chat'}")],
-                [InlineKeyboardButton("🔍 Просто проанализировать", callback_data=f"analyze_once_{chat_id}_{'channel' if is_channel else 'chat'}")],
-                [InlineKeyboardButton("❌ Пропустить", callback_data="skip_monitoring")]
-            ]
+            # Extract sender info if available
+            if hasattr(update.message.forward_origin, 'sender_user') and update.message.forward_origin.sender_user:
+                message.sender_id = update.message.forward_origin.sender_user.id
+                message.sender_name = update.message.forward_origin.sender_user.full_name
+            elif hasattr(update.message.forward_origin, 'sender_user_name'):
+                message.sender_name = update.message.forward_origin.sender_user_name
+            
+            logger.info(f"Анализирую пересланное сообщение: {message.text[:50]}...")
+            
+            # Analyze message importance
+            importance_score = evaluate_message_importance(message, user)
+            message.importance_score = importance_score
+            
+            logger.info(f"Оценка важности: {importance_score:.2f}, порог: {Storage.bot_config.importance_threshold}")
+            
+            # Prepare message for the user
+            analysis_text = (
+                f"🤖 <b>Анализ сообщения от ИИ</b>\n\n"
+                f"📋 <b>Источник:</b> {html.escape(chat_title)}\n"
+                f"📊 <b>Оценка важности:</b> {importance_score:.2f}\n"
+                f"🎯 <b>Глобальный порог:</b> {Storage.bot_config.importance_threshold}\n\n"
+            )
+            
+            # Create keyboard
+            keyboard = []
+            
+            # If not monitored, offer to add to monitoring
+            if not is_already_monitored:
+                keyboard.append(
+                    [InlineKeyboardButton("✅ Добавить в мониторинг", callback_data=f"add_passive_monitoring_{chat_id}_{'channel' if is_channel else 'chat'}")]
+                )
+            
+            # Always offer to submit for moderation
+            keyboard.append(
+                [InlineKeyboardButton("📝 Отправить админу на модерацию", callback_data=f"submit_for_moderation_{update.message.message_id}")]
+            )
+            
             reply_markup = InlineKeyboardMarkup(keyboard)
             
+            # Check if the message is important enough
+            if importance_score >= Storage.bot_config.importance_threshold:
+                analysis_text += "✅ <b>Сообщение превышает порог важности!</b>\n\n"
+                
+                # Process important message for potential publication
+                try:
+                    published = await AdminService.process_important_message(context.bot, message, importance_score)
+                    if published:
+                        analysis_text += "📢 <i>Сообщение автоматически опубликовано в канале.</i>\n\n"
+                        logger.info(f"Важное пересланное сообщение автоматически опубликовано в канале (оценка: {importance_score:.2f})")
+                except Exception as e:
+                    logger.error(f"Ошибка при обработке важного сообщения для публикации: {e}")
+            else:
+                analysis_text += "❌ <b>Сообщение ниже порога важности.</b>\n\n"
+                
+                # If message was rejected by AI, notify admins
+                if importance_score < 0.3:  # Very low score
+                    try:
+                        # Create a pending post for admin review
+                        post_id = await AdminService.submit_post_for_review(
+                            user_id,
+                            message.text,
+                            f"Автоматическая модерация: отклонено ИИ (оценка: {importance_score:.2f})"
+                        )
+                        
+                        # Get the post and notify admins
+                        post = Storage.get_pending_post(post_id)
+                        if post:
+                            post.importance_score = importance_score
+                            await AdminService.notify_admins_about_new_post(context.bot, post)
+                            
+                        analysis_text += "📨 <i>Сообщение отправлено администраторам для проверки отклонения.</i>\n\n"
+                        logger.info(f"Сообщение с низкой оценкой ({importance_score:.2f}) отправлено админам")
+                    except Exception as e:
+                        logger.error(f"Ошибка при отправке сообщения админам: {e}")
+            
+            analysis_text += f"📄 <b>Текст сообщения:</b>\n{html.escape(message.text[:300])}"
+            if len(message.text) > 300:
+                analysis_text += "..."
+            
             await update.message.reply_text(
-                f"🔍 <b>Обнаружен новый источник:</b> {chat_title}\n\n"
-                f"📊 <b>Варианты действий:</b>\n\n"
-                f"🟢 <b>Добавить в мониторинг</b>\n"
-                f"• Анализ всех пересланных сообщений\n"
-                f"• Автоматические уведомления о важных сообщениях\n"
-                f"• Не требует прав администратора\n\n"
-                f"🔍 <b>Разовый анализ</b>\n"
-                f"• Анализ только этого сообщения\n"
-                f"• Без сохранения в мониторинг\n\n"
-                f"💡 <b>Преимущество:</b> Работает с любыми чатами и каналами, "
-                f"даже закрытыми, без необходимости добавления бота!",
+                analysis_text,
                 parse_mode=ParseMode.HTML,
                 reply_markup=reply_markup
             )
             return
+
     
     # Handle direct messages from channels/groups (ACTIVE MONITORING - when bot is added)
     elif update.message and update.message.chat and update.message.chat.type in ["channel", "group", "supergroup"]:
@@ -2947,6 +3209,8 @@ def main() -> None:
     application.add_handler(CommandHandler("menu", menu_command))
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("submit_post", submit_post_command))
+    application.add_handler(CommandHandler("admin_add", admin_add_command))
+    application.add_handler(CommandHandler("admin_remove", admin_remove_command))
     
     # Add callback query handler
     application.add_handler(CallbackQueryHandler(callback_handler))
