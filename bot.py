@@ -34,13 +34,9 @@ def get_main_reply_keyboard(user_id: int) -> ReplyKeyboardMarkup:
         # Упрощенное меню для администраторов
         keyboard = [
             ["📊 Мониторинг", "📢 Канал публикации"],
-            ["👥 Администраторы", "⚙️ Настройки"]
+            ["👥 Администраторы", "⚙️ Настройки"],
+            ["ℹ️ Справка"]
         ]
-        
-        if USERBOT_ENABLED:
-            keyboard.append(["🤖 Userbot", "ℹ️ Справка"])
-        else:
-            keyboard.append(["ℹ️ Справка"])
     else:
         # Ограниченное меню для обычных пользователей
         keyboard = [
@@ -52,16 +48,7 @@ def get_main_reply_keyboard(user_id: int) -> ReplyKeyboardMarkup:
 
 
 
-def get_userbot_reply_keyboard() -> ReplyKeyboardMarkup:
-    """Создает клавиатуру для userbot"""
-    keyboard = [
-        ["🚀 Запустить", "⏹️ Остановить"],
-        ["➕ Присоединиться", "➖ Покинуть"],
-        ["📊 Статус", "🔄 Сброс сессии"],
-        ["🔙 Главное меню"]
-    ]
-    
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+
 
 # ===========================================
 # ESSENTIAL COMMANDS (минимум)
@@ -406,14 +393,7 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
     
 
     
-    elif text == "🤖 Userbot":
-        if USERBOT_ENABLED and Storage.is_admin(user_id):
-            await show_userbot_interface(update, context)
-        elif not USERBOT_ENABLED:
-            await update.message.reply_text("❌ Userbot отключен в конфигурации.")
-        else:
-            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
-        return True
+
     
     elif text == "ℹ️ Справка":
         await show_help_interface(update, context)
@@ -439,48 +419,7 @@ async def handle_reply_buttons(update: Update, context: CallbackContext) -> bool
     
 
     
-    # Userbot buttons
-    elif text == "🚀 Запустить":
-        if USERBOT_ENABLED:
-            await handle_userbot_start(update, context)
-        else:
-            await update.message.reply_text("❌ Userbot отключен.")
-        return True
-    
-    elif text == "⏹️ Остановить":
-        if USERBOT_ENABLED:
-            await handle_userbot_stop(update, context)
-        else:
-            await update.message.reply_text("❌ Userbot отключен.")
-        return True
-    
-    elif text == "➕ Присоединиться":
-        if USERBOT_ENABLED:
-            await show_userbot_join_interface(update, context)
-        else:
-            await update.message.reply_text("❌ Userbot отключен.")
-        return True
-    
-    elif text == "➖ Покинуть":
-        if USERBOT_ENABLED:
-            await show_userbot_leave_interface(update, context)
-        else:
-            await update.message.reply_text("❌ Userbot отключен.")
-        return True
-    
-    elif text == "📊 Статус":
-        if USERBOT_ENABLED:
-            await show_userbot_status(update, context)
-        else:
-            await update.message.reply_text("❌ Userbot отключен.")
-        return True
-    
-    elif text == "🔄 Сброс сессии":
-        if USERBOT_ENABLED:
-            await handle_userbot_reset_session(update, context)
-        else:
-            await update.message.reply_text("❌ Userbot отключен.")
-        return True
+
     
     # Back to main menu
     elif text == "🔙 Главное меню":
@@ -514,25 +453,53 @@ async def show_monitoring_interface(update: Update, context: CallbackContext, us
         f"• Всего источников: {total_sources}\n"
         f"• Чатов: {len(user.monitored_chats)}\n"
         f"• Каналов: {len(user.monitored_channels)}\n"
-        f"• Порог важности: {Storage.bot_config.importance_threshold} (глобальный)\n\n"
-        f"💡 <b>Как добавить источник:</b>\n"
+        f"• Порог важности: {Storage.bot_config.importance_threshold} (глобальный)\n"
+    )
+    
+    # Добавляем информацию о userbot, если включен
+    if USERBOT_ENABLED:
+        try:
+            userbot = get_userbot()
+            if userbot.is_running:
+                monitored_userbot = userbot.get_monitored_sources()
+                monitoring_text += f"\n\n🤖 <b>Скрытый мониторинг (Userbot):</b>\n"
+                monitoring_text += f"• Статус: ✅ Активен\n"
+                monitoring_text += f"• Источников: {len(monitored_userbot)}\n"
+            else:
+                monitoring_text += f"\n\n🤖 <b>Скрытый мониторинг (Userbot):</b>\n"
+                monitoring_text += f"• Статус: ❌ Неактивен\n"
+        except:
+            monitoring_text += f"\n\n🤖 <b>Скрытый мониторинг:</b> Недоступен\n"
+    
+    monitoring_text += (
+        f"\n💡 <b>Как добавить источник:</b>\n"
         f"1. Перешлите сообщение из чата/канала боту\n"
-        f"2. Выберите действие в предложенном меню\n\n"
-        f"🤖 <b>Или используйте Userbot для скрытого мониторинга</b>"
+        f"2. Выберите действие в предложенном меню"
     )
     
     keyboard = [
         [
             InlineKeyboardButton("📋 Список источников", callback_data="monitoring_list"),
             InlineKeyboardButton("🗑️ Удалить источник", callback_data="monitoring_remove")
-        ],
-        [
-            InlineKeyboardButton("🧹 Очистить все", callback_data="monitoring_clear")
         ]
     ]
     
+    # Добавляем кнопки userbot, если он доступен
     if USERBOT_ENABLED:
-        keyboard.append([InlineKeyboardButton("🤖 Перейти к Userbot", callback_data="goto_userbot")])
+        userbot = get_userbot()
+        if userbot.is_running:
+            keyboard.append([
+                InlineKeyboardButton("⏹️ Остановить Userbot", callback_data="userbot_stop"),
+                InlineKeyboardButton("➕ Добавить в Userbot", callback_data="userbot_join")
+            ])
+        else:
+            keyboard.append([
+                InlineKeyboardButton("🚀 Запустить Userbot", callback_data="userbot_start")
+            ])
+    
+    keyboard.append([
+        InlineKeyboardButton("🧹 Очистить все", callback_data="monitoring_clear")
+    ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -1369,36 +1336,8 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
             )
         return
     
-    # Handle keyword additions
-    if text.startswith('+') and len(text) > 1 and not text[1:].isdigit():
-        if Storage.is_admin(user_id):
-            keyword = text[1:].strip().lower()
-            if keyword not in user.keywords:
-                user.keywords.append(keyword)
-                Storage.update_user(user)
-                await update.message.reply_text(f"✅ Добавлено важное слово: <b>{html.escape(keyword)}</b>", parse_mode=ParseMode.HTML)
-            else:
-                await update.message.reply_text(f"⚠️ Слово '<b>{html.escape(keyword)}</b>' уже есть в списке важных.", parse_mode=ParseMode.HTML)
-        else:
-            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
-        return
-    
-    # Handle keyword exclusions
-    elif text.startswith('-') and len(text) > 1 and not text[1:].isdigit():
-        if Storage.is_admin(user_id):
-            keyword = text[1:].strip().lower()
-            if keyword not in user.exclude_keywords:
-                user.exclude_keywords.append(keyword)
-                Storage.update_user(user)
-                await update.message.reply_text(f"✅ Добавлено исключаемое слово: <b>{html.escape(keyword)}</b>", parse_mode=ParseMode.HTML)
-            else:
-                await update.message.reply_text(f"⚠️ Слово '<b>{html.escape(keyword)}</b>' уже есть в списке исключаемых.", parse_mode=ParseMode.HTML)
-        else:
-            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
-        return
-    
-    # Handle admin username input
-    elif Storage.is_admin(user_id) and user.current_state == "admin_add_username":
+    # Handle admin username input (проверяем в первую очередь для админов с активным состоянием)
+    if Storage.is_admin(user_id) and user.current_state == "admin_add_username":
         # Сбрасываем состояние
         user.current_state = None
         Storage.update_user(user)
@@ -1450,6 +1389,34 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
         text.startswith('http')
     ):
         await handle_channel_config_text(update, context, text)
+        return
+    
+    # Handle keyword additions
+    if text.startswith('+') and len(text) > 1 and not text[1:].isdigit():
+        if Storage.is_admin(user_id):
+            keyword = text[1:].strip().lower()
+            if keyword not in user.keywords:
+                user.keywords.append(keyword)
+                Storage.update_user(user)
+                await update.message.reply_text(f"✅ Добавлено важное слово: <b>{html.escape(keyword)}</b>", parse_mode=ParseMode.HTML)
+            else:
+                await update.message.reply_text(f"⚠️ Слово '<b>{html.escape(keyword)}</b>' уже есть в списке важных.", parse_mode=ParseMode.HTML)
+        else:
+            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
+        return
+    
+    # Handle keyword exclusions
+    elif text.startswith('-') and len(text) > 1 and not text[1:].isdigit():
+        if Storage.is_admin(user_id):
+            keyword = text[1:].strip().lower()
+            if keyword not in user.exclude_keywords:
+                user.exclude_keywords.append(keyword)
+                Storage.update_user(user)
+                await update.message.reply_text(f"✅ Добавлено исключаемое слово: <b>{html.escape(keyword)}</b>", parse_mode=ParseMode.HTML)
+            else:
+                await update.message.reply_text(f"⚠️ Слово '<b>{html.escape(keyword)}</b>' уже есть в списке исключаемых.", parse_mode=ParseMode.HTML)
+        else:
+            await update.message.reply_text("❌ Эта функция доступна только администраторам.")
         return
     
     # Handle admin threshold setup
@@ -2506,12 +2473,70 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
             # Создаем фиктивный update для show_admins_management
             await show_admins_management(update, context)
     
-    # Navigation callbacks
-    elif data == "goto_userbot":
-        if USERBOT_ENABLED:
-            await show_userbot_interface(update, context)
+    # Userbot callbacks from monitoring interface
+    elif data == "userbot_start":
+        if USERBOT_ENABLED and Storage.is_admin(user_id):
+            try:
+                userbot = get_userbot()
+                if userbot.is_running:
+                    await query.answer("⚠️ Userbot уже запущен.")
+                    return
+                
+                await start_userbot()
+                await query.answer("✅ Userbot запущен!")
+                
+                # Обновляем интерфейс мониторинга
+                await query.message.delete()
+                await show_monitoring_interface(update, context, user)
+                
+            except Exception as e:
+                logger.error(f"Ошибка запуска userbot: {e}")
+                await query.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
         else:
-            await query.edit_message_text("❌ Userbot отключен.")
+            await query.answer("❌ Недоступно", show_alert=True)
+    
+    elif data == "userbot_stop":
+        if USERBOT_ENABLED and Storage.is_admin(user_id):
+            try:
+                userbot = get_userbot()
+                if not userbot.is_running:
+                    await query.answer("⚠️ Userbot уже остановлен.")
+                    return
+                
+                await stop_userbot()
+                await query.answer("⏹️ Userbot остановлен!")
+                
+                # Обновляем интерфейс мониторинга
+                await query.message.delete()
+                await show_monitoring_interface(update, context, user)
+                
+            except Exception as e:
+                logger.error(f"Ошибка остановки userbot: {e}")
+                await query.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+        else:
+            await query.answer("❌ Недоступно", show_alert=True)
+    
+    elif data == "userbot_join":
+        if USERBOT_ENABLED and Storage.is_admin(user_id):
+            # Устанавливаем состояние пользователя для ввода ссылки
+            user.current_state = "userbot_join"
+            Storage.update_user(user)
+            
+            await query.edit_message_text(
+                "➕ <b>Добавление источника в скрытый мониторинг</b>\n\n"
+                "💡 <b>Отправьте ссылку на канал или чат:</b>\n"
+                "• https://t.me/channel_name\n"
+                "• @channel_name\n"
+                "• Ссылку-приглашение\n\n"
+                "🔒 <b>Поддерживаются:</b>\n"
+                "• Публичные каналы\n"
+                "• Приватные каналы (по ссылке-приглашению)\n"
+                "• Группы и супергруппы\n\n"
+                "❌ Для отмены нажмите /menu",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await query.answer("❌ Недоступно", show_alert=True)
     
     # Monitoring callbacks for forwarded messages
     elif data.startswith("add_passive_monitoring_"):
@@ -2710,40 +2735,80 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
 
 async def show_monitoring_list(query, context: CallbackContext, user: UserPreferences) -> None:
     """Show list of monitored sources."""
-    if not user.monitored_chats and not user.monitored_channels:
-        await query.edit_message_text("❌ Вы не мониторите ни одного источника.")
+    has_regular_monitoring = user.monitored_chats or user.monitored_channels
+    has_userbot_monitoring = False
+    
+    # Проверяем userbot мониторинг
+    userbot_sources = []
+    if USERBOT_ENABLED:
+        try:
+            userbot = get_userbot()
+            if userbot.is_running:
+                userbot_sources = list(userbot.get_monitored_sources())
+                has_userbot_monitoring = bool(userbot_sources)
+        except:
+            pass
+    
+    if not has_regular_monitoring and not has_userbot_monitoring:
+        await query.edit_message_text("❌ Нет источников в мониторинге.")
         return
     
     list_text = "📋 <b>Список мониторимых источников:</b>\n\n"
     
-    if user.monitored_chats:
-        list_text += "💬 <b>Чаты:</b>\n"
-        for chat_id in user.monitored_chats:
+    # Обычный мониторинг (пересылка сообщений)
+    if has_regular_monitoring:
+        list_text += "📱 <b>Обычный мониторинг (пересылка):</b>\n\n"
+        
+        if user.monitored_chats:
+            list_text += "💬 <b>Чаты:</b>\n"
+            for chat_id in user.monitored_chats:
+                try:
+                    chat = await context.bot.get_chat(chat_id)
+                    chat_title = html.escape(chat.title or "Без названия")
+                    chat_link = f"https://t.me/{chat.username}" if chat.username else ""
+                    if chat_link:
+                        list_text += f"• <a href='{chat_link}'>{chat_title}</a> ({chat_id})\n"
+                    else:
+                        list_text += f"• {chat_title} ({chat_id})\n"
+                except Exception:
+                    list_text += f"• {chat_id}\n"
+            list_text += "\n"
+        
+        if user.monitored_channels:
+            list_text += "📢 <b>Каналы:</b>\n"
+            for channel_id in user.monitored_channels:
+                try:
+                    channel = await context.bot.get_chat(channel_id)
+                    channel_title = html.escape(channel.title or "Без названия")
+                    channel_link = f"https://t.me/{channel.username}" if channel.username else ""
+                    if channel_link:
+                        list_text += f"• <a href='{channel_link}'>{channel_title}</a> ({channel_id})\n"
+                    else:
+                        list_text += f"• {channel_title} ({channel_id})\n"
+                except Exception:
+                    list_text += f"• {channel_id}\n"
+            list_text += "\n"
+    
+    # Userbot мониторинг
+    if has_userbot_monitoring:
+        list_text += "🤖 <b>Скрытый мониторинг (Userbot):</b>\n"
+        list_text += f"<i>Всего источников: {len(userbot_sources)}</i>\n\n"
+        
+        # Показываем первые 10 источников
+        for source_id in userbot_sources[:10]:
             try:
-                chat = await context.bot.get_chat(chat_id)
+                chat = await context.bot.get_chat(source_id)
                 chat_title = html.escape(chat.title or "Без названия")
                 chat_link = f"https://t.me/{chat.username}" if chat.username else ""
                 if chat_link:
-                    list_text += f"• <a href='{chat_link}'>{chat_title}</a> ({chat_id})\n"
+                    list_text += f"• <a href='{chat_link}'>{chat_title}</a> ({source_id})\n"
                 else:
-                    list_text += f"• {chat_title} ({chat_id})\n"
+                    list_text += f"• {chat_title} ({source_id})\n"
             except Exception:
-                list_text += f"• {chat_id}\n"
-        list_text += "\n"
-    
-    if user.monitored_channels:
-        list_text += "📢 <b>Каналы:</b>\n"
-        for channel_id in user.monitored_channels:
-            try:
-                channel = await context.bot.get_chat(channel_id)
-                channel_title = html.escape(channel.title or "Без названия")
-                channel_link = f"https://t.me/{channel.username}" if channel.username else ""
-                if channel_link:
-                    list_text += f"• <a href='{channel_link}'>{channel_title}</a> ({channel_id})\n"
-                else:
-                    list_text += f"• {channel_title} ({channel_id})\n"
-            except Exception:
-                list_text += f"• {channel_id}\n"
+                list_text += f"• ID: {source_id}\n"
+        
+        if len(userbot_sources) > 10:
+            list_text += f"\n<i>... и еще {len(userbot_sources) - 10} источников</i>"
     
     await query.edit_message_text(list_text, parse_mode=ParseMode.HTML)
 
