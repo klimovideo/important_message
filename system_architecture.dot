@@ -1,0 +1,135 @@
+digraph SystemArchitecture {
+    // Настройки графа
+    rankdir=TB;
+    node [shape=box, style=filled, fontname="Arial", fontsize=10];
+    edge [fontname="Arial", fontsize=9];
+    
+    // Пользователи и внешние системы
+    subgraph cluster_external {
+        label="🌐 Внешние системы";
+        style=filled;
+        color=lightgrey;
+        
+        telegram_users [label="👥 Пользователи\nTelegram", fillcolor=lightpink];
+        telegram_channels [label="📢 Telegram\nканалы", fillcolor=lightpink];
+        telegram_chats [label="💬 Telegram\nчаты", fillcolor=lightpink];
+        giga_chat_api [label="🤖 GigaChat\nAPI", fillcolor=lightcoral];
+    }
+    
+    // Основные компоненты системы
+    subgraph cluster_core {
+        label="🏗️ Основные компоненты системы";
+        style=filled;
+        color=lightblue;
+        
+        main_bot [label="🤖 Основной бот\n(python-telegram-bot)", fillcolor=lightgreen];
+        userbot [label="👤 Userbot\n(Pyrogram)", fillcolor=lightgreen];
+        ai_service [label="🧠 AI сервис\n(анализ важности)", fillcolor=lightgreen];
+        admin_service [label="👑 Админ сервис\n(модерация)", fillcolor=lightgreen];
+        storage [label="💾 Хранилище\n(JSON файлы)", fillcolor=lightyellow];
+    }
+    
+    // Модули и сервисы
+    subgraph cluster_modules {
+        label="🔧 Модули и сервисы";
+        style=filled;
+        color=lightgreen;
+        
+        message_handler [label="📨 Обработчик\nсообщений", fillcolor=lightyellow];
+        callback_handler [label="🔘 Обработчик\ncallback", fillcolor=lightyellow];
+        config_manager [label="⚙️ Менеджер\nконфигурации", fillcolor=lightyellow];
+        notification_service [label="🔔 Сервис\nуведомлений", fillcolor=lightyellow];
+        moderation_service [label="📝 Сервис\nмодерации", fillcolor=lightyellow];
+    }
+    
+    // Хранилища данных
+    subgraph cluster_storage {
+        label="💾 Хранилища данных";
+        style=filled;
+        color=lightyellow;
+        
+        user_prefs_db [label="👥 user_preferences.json\n(настройки пользователей)", fillcolor=orange];
+        bot_config_db [label="🤖 bot_config.json\n(конфигурация бота)", fillcolor=orange];
+        pending_posts_db [label="📝 pending_posts.json\n(очередь модерации)", fillcolor=orange];
+        userbot_session [label="👤 userbot_session.session\n(сессия userbot)", fillcolor=orange];
+    }
+    
+    // Каналы публикации
+    subgraph cluster_output {
+        label="📤 Выходные каналы";
+        style=filled;
+        color=lightpink;
+        
+        important_channel [label="📢 Канал важных\nсообщений", fillcolor=lightcoral];
+        admin_notifications [label="🔔 Уведомления\nадминистраторам", fillcolor=lightcoral];
+        user_notifications [label="📱 Уведомления\nпользователям", fillcolor=lightcoral];
+    }
+    
+    // Связи с внешними системами
+    telegram_users -> main_bot [label="Команды\nи сообщения"];
+    telegram_channels -> main_bot [label="Мониторинг\n(если бот админ)"];
+    telegram_channels -> userbot [label="Скрытый\nмониторинг"];
+    telegram_chats -> userbot [label="Скрытый\nмониторинг"];
+    
+    // Связи между компонентами
+    main_bot -> message_handler;
+    main_bot -> callback_handler;
+    main_bot -> config_manager;
+    
+    message_handler -> ai_service [label="Анализ\nважности"];
+    message_handler -> admin_service [label="Модерация"];
+    
+    ai_service -> giga_chat_api [label="API запросы"];
+    giga_chat_api -> ai_service [label="Оценка\nважности"];
+    
+    admin_service -> moderation_service;
+    admin_service -> notification_service;
+    
+    // Связи с хранилищами
+    storage -> user_prefs_db;
+    storage -> bot_config_db;
+    storage -> pending_posts_db;
+    
+    main_bot -> storage [label="Чтение/запись\nданных"];
+    userbot -> storage [label="Чтение\nнастроек"];
+    ai_service -> storage [label="Чтение\nкритериев"];
+    admin_service -> storage [label="Управление\nпостами"];
+    
+    userbot -> userbot_session [label="Сохранение\nсессии"];
+    
+    // Выходные связи
+    admin_service -> important_channel [label="Публикация\nважных сообщений"];
+    notification_service -> admin_notifications [label="Уведомления\nадминам"];
+    notification_service -> user_notifications [label="Уведомления\nпользователям"];
+    
+    // Дополнительные связи
+    config_manager -> storage [label="Управление\nконфигурацией"];
+    moderation_service -> storage [label="Обновление\nстатусов"];
+    
+    // Стили для лучшей читаемости
+    edge [color=blue, penwidth=2];
+    telegram_users -> main_bot;
+    ai_service -> giga_chat_api;
+    admin_service -> important_channel;
+    
+    edge [color=green, penwidth=1];
+    main_bot -> message_handler;
+    message_handler -> ai_service;
+    ai_service -> storage;
+    
+    edge [color=orange, penwidth=1];
+    storage -> user_prefs_db;
+    storage -> bot_config_db;
+    storage -> pending_posts_db;
+    
+    edge [color=red, penwidth=1];
+    telegram_channels -> userbot;
+    telegram_chats -> userbot;
+    
+    // Группировка по уровням
+    {rank=same; telegram_users; telegram_channels; telegram_chats}
+    {rank=same; main_bot; userbot}
+    {rank=same; ai_service; admin_service}
+    {rank=same; user_prefs_db; bot_config_db; pending_posts_db}
+    {rank=same; important_channel; admin_notifications; user_notifications}
+} 

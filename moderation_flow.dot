@@ -1,0 +1,173 @@
+digraph ModerationFlow {
+    // Настройки графа
+    rankdir=TB;
+    node [shape=box, style=filled, fontname="Arial", fontsize=10];
+    edge [fontname="Arial", fontsize=9];
+    
+    // Начало процесса
+    subgraph cluster_start {
+        label="🚀 Начало процесса модерации";
+        style=filled;
+        color=lightblue;
+        
+        user_submit [label="👤 Пользователь\nпредлагает пост", fillcolor=lightgreen];
+        auto_detect [label="🤖 Автоматическое\nобнаружение важного", fillcolor=lightgreen];
+        forwarded_message [label="📤 Пересланное\nсообщение", fillcolor=lightgreen];
+    }
+    
+    // Создание поста
+    subgraph cluster_post_creation {
+        label="📝 Создание поста";
+        style=filled;
+        color=lightgreen;
+        
+        create_post [label="📋 Создание\nобъекта поста", fillcolor=lightyellow];
+        generate_id [label="🆔 Генерация\nуникального ID", fillcolor=lightyellow];
+        save_post [label="💾 Сохранение\nв очередь", fillcolor=lightyellow];
+        ai_evaluation [label="🧠 AI оценка\nважности", fillcolor=lightyellow];
+    }
+    
+    // Уведомления администраторов
+    subgraph cluster_notifications {
+        label="🔔 Уведомления администраторов";
+        style=filled;
+        color=lightyellow;
+        
+        notify_admins [label="📢 Уведомление\nвсех админов", fillcolor=lightcoral];
+        inline_buttons [label="🔘 Inline кнопки\nмодерации", fillcolor=lightcoral];
+        post_preview [label="👀 Превью\nпоста", fillcolor=lightcoral];
+    }
+    
+    // Процесс модерации
+    subgraph cluster_moderation {
+        label="👑 Процесс модерации";
+        style=filled;
+        color=lightpink;
+        
+        admin_review [label="👑 Администратор\nрассматривает", fillcolor=lightgreen];
+        approve_action [label="✅ Действие:\nОдобрить", fillcolor=lightgreen];
+        reject_action [label="❌ Действие:\nОтклонить", fillcolor=lightgreen];
+        full_text_action [label="📄 Действие:\nПолный текст", fillcolor=lightgreen];
+    }
+    
+    // Результаты модерации
+    subgraph cluster_results {
+        label="🎯 Результаты модерации";
+        style=filled;
+        color=lightblue;
+        
+        auto_publish [label="🚀 Автопубликация\n(если включена)", fillcolor=lightgreen];
+        manual_publish [label="📝 Ручная\nпубликация", fillcolor=lightgreen];
+        publish_channel [label="📢 Публикация\nв канале", fillcolor=lightcoral];
+        notify_author [label="📱 Уведомление\nавтору", fillcolor=lightgreen];
+        update_status [label="📊 Обновление\nстатуса", fillcolor=lightyellow];
+    }
+    
+    // Хранилища
+    subgraph cluster_storage {
+        label="💾 Хранилища данных";
+        style=filled;
+        color=lightgrey;
+        
+        pending_posts [label="📝 pending_posts.json\n(очередь модерации)", fillcolor=orange];
+        bot_config [label="🤖 bot_config.json\n(настройки)", fillcolor=orange];
+        user_prefs [label="👥 user_preferences.json\n(настройки пользователей)", fillcolor=orange];
+    }
+    
+    // Связи начала процесса
+    user_submit -> create_post;
+    auto_detect -> create_post;
+    forwarded_message -> create_post;
+    
+    // Создание поста
+    create_post -> generate_id;
+    generate_id -> save_post;
+    save_post -> ai_evaluation;
+    ai_evaluation -> notify_admins;
+    
+    // Уведомления
+    notify_admins -> inline_buttons;
+    inline_buttons -> post_preview;
+    post_preview -> admin_review;
+    
+    // Модерация
+    admin_review -> approve_action [label="Нажатие\n✅ Одобрить"];
+    admin_review -> reject_action [label="Нажатие\n❌ Отклонить"];
+    admin_review -> full_text_action [label="Нажатие\n📄 Полный текст"];
+    
+    full_text_action -> admin_review [label="Возврат\nк рассмотрению"];
+    
+    // Результаты одобрения
+    approve_action -> auto_publish [label="Автопубликация\nвключена"];
+    approve_action -> manual_publish [label="Ручная\nпубликация"];
+    
+    auto_publish -> publish_channel;
+    manual_publish -> publish_channel;
+    
+    // Результаты отклонения
+    reject_action -> notify_author;
+    
+    // Обновление статусов
+    approve_action -> update_status;
+    reject_action -> update_status;
+    publish_channel -> update_status;
+    
+    // Связи с хранилищами
+    save_post -> pending_posts;
+    update_status -> pending_posts;
+    ai_evaluation -> bot_config [label="Чтение\nпорога важности"];
+    notify_author -> user_prefs [label="Чтение\nнастроек пользователя"];
+    
+    // Детализация inline кнопок
+    subgraph cluster_inline_buttons {
+        label="🔘 Inline кнопки модерации";
+        style=filled;
+        color=lightyellow;
+        
+        approve_button [label="✅ Одобрить\ncallback: approve_post_{id}", fillcolor=lightgreen];
+        reject_button [label="❌ Отклонить\ncallback: reject_post_{id}", fillcolor=lightcoral];
+        full_text_button [label="📄 Полный текст\ncallback: full_text_{id}", fillcolor=lightblue];
+    }
+    
+    inline_buttons -> approve_button;
+    inline_buttons -> reject_button;
+    inline_buttons -> full_text_button;
+    
+    // Примеры уведомлений
+    subgraph cluster_examples {
+        label="📋 Примеры уведомлений";
+        style=filled;
+        color=lightpink;
+        
+        admin_notification [label="📝 Новый пост на модерации\n\nID: abc12345\nОт: @user_name\nОценка ИИ: 0.85\n\n[✅ Одобрить] [❌ Отклонить] [📄 Полный текст]", fillcolor=lightyellow];
+        user_notification [label="✅ Ваш пост одобрен и опубликован!\n\nID: abc12345\nВремя: 15.03.2024 14:30", fillcolor=lightgreen];
+    }
+    
+    notify_admins -> admin_notification;
+    notify_author -> user_notification;
+    
+    // Стили для лучшей читаемости
+    edge [color=blue, penwidth=2];
+    user_submit -> create_post;
+    admin_review -> approve_action;
+    approve_action -> auto_publish;
+    
+    edge [color=green, penwidth=1];
+    approve_action -> manual_publish;
+    auto_publish -> publish_channel;
+    manual_publish -> publish_channel;
+    
+    edge [color=red, penwidth=1];
+    admin_review -> reject_action;
+    reject_action -> notify_author;
+    
+    edge [color=orange, penwidth=1];
+    save_post -> pending_posts;
+    update_status -> pending_posts;
+    
+    // Группировка по уровням
+    {rank=same; user_submit; auto_detect; forwarded_message}
+    {rank=same; create_post; generate_id; save_post}
+    {rank=same; approve_button; reject_button; full_text_button}
+    {rank=same; auto_publish; manual_publish; notify_author}
+} 

@@ -1,0 +1,147 @@
+digraph AIAnalysis {
+    // Настройки графа
+    rankdir=LR;
+    node [shape=box, style=filled, fontname="Arial", fontsize=10];
+    edge [fontname="Arial", fontsize=9];
+    
+    // Основной процесс AI анализа
+    subgraph cluster_ai_process {
+        label="🧠 Процесс AI анализа важности сообщений";
+        style=filled;
+        color=lightblue;
+        
+        // Входные данные
+        input_message [label="📨 Входящее\nсообщение", fillcolor=lightgreen];
+        user_prefs [label="👤 Настройки\nпользователя", fillcolor=lightgreen];
+        global_config [label="⚙️ Глобальные\nнастройки", fillcolor=lightgreen];
+        
+        // Предобработка
+        preprocess [label="🔧 Предобработка\nсообщения", fillcolor=lightyellow];
+        extract_text [label="📝 Извлечение\nтекста", fillcolor=lightyellow];
+        clean_text [label="🧹 Очистка\nтекста", fillcolor=lightyellow];
+        
+        // Формирование промпта
+        create_prompt [label="📋 Формирование\nпромпта для ИИ", fillcolor=lightyellow];
+        prompt_template [label="📄 Шаблон\nпромпта", fillcolor=lightcoral];
+        
+        // AI анализ
+        giga_chat_request [label="🤖 Запрос к\nGigaChat API", fillcolor=lightcoral];
+        giga_chat_response [label="📤 Ответ от\nGigaChat", fillcolor=lightcoral];
+        
+        // Обработка результата
+        parse_response [label="🔍 Парсинг\nответа", fillcolor=lightyellow];
+        extract_score [label="📊 Извлечение\nоценки", fillcolor=lightyellow];
+        
+        // Применение критериев
+        apply_criteria [label="⚖️ Применение\nкритериев", fillcolor=lightyellow];
+        check_keywords [label="🔑 Проверка\nключевых слов", fillcolor=lightyellow];
+        check_source [label="📢 Проверка\nисточника", fillcolor=lightyellow];
+        
+        // Финальная оценка
+        final_score [label="⭐ Финальная\nоценка важности", fillcolor=lightgreen];
+        decision [label="🎯 Решение о\nпубликации", shape=diamond, fillcolor=yellow];
+    }
+    
+    // Детализация критериев
+    subgraph cluster_criteria {
+        label="📋 Критерии оценки важности";
+        style=filled;
+        color=lightgreen;
+        
+        keywords_boost [label="📈 Ключевые слова\n(повышают важность)", fillcolor=lightyellow];
+        keywords_reduce [label="📉 Ключевые слова\n(снижают важность)", fillcolor=lightyellow];
+        source_boost [label="📢 Источники\n(повышают важность)", fillcolor=lightyellow];
+        source_reduce [label="📢 Источники\n(снижают важность)", fillcolor=lightyellow];
+        time_sensitivity [label="⏰ Временная\nчувствительность", fillcolor=lightyellow];
+        message_length [label="📏 Длина\nсообщения", fillcolor=lightyellow];
+    }
+    
+    // Шаблон промпта
+    subgraph cluster_prompt {
+        label="📄 Шаблон промпта для GigaChat";
+        style=filled;
+        color=lightyellow;
+        
+        prompt_example [label="Оцените важность сообщения от 0.0 до 1.0:\n\nСообщение: {текст}\nИсточник: {источник}\nВремя: {время}\n\nУчитывайте:\n- Деловую значимость\n- Срочность\n- Влияние на работу\n- Контекст компании", fillcolor=lightcoral];
+    }
+    
+    // Связи основного процесса
+    input_message -> preprocess;
+    user_prefs -> preprocess;
+    global_config -> preprocess;
+    
+    preprocess -> extract_text;
+    extract_text -> clean_text;
+    clean_text -> create_prompt;
+    
+    create_prompt -> prompt_template;
+    prompt_template -> giga_chat_request;
+    giga_chat_request -> giga_chat_response;
+    giga_chat_response -> parse_response;
+    parse_response -> extract_score;
+    
+    extract_score -> apply_criteria;
+    apply_criteria -> check_keywords;
+    apply_criteria -> check_source;
+    
+    check_keywords -> final_score;
+    check_source -> final_score;
+    
+    final_score -> decision;
+    
+    // Связи с критериями
+    keywords_boost -> check_keywords;
+    keywords_reduce -> check_keywords;
+    source_boost -> check_source;
+    source_reduce -> check_source;
+    time_sensitivity -> apply_criteria;
+    message_length -> apply_criteria;
+    
+    // Примеры ключевых слов
+    subgraph cluster_examples {
+        label="🔑 Примеры ключевых слов";
+        style=filled;
+        color=lightpink;
+        
+        boost_examples [label="📈 Повышают важность:\n• срочно, важно, встреча\n• дедлайн, отчет, проект\n• уведомление, изменение", fillcolor=lightyellow];
+        reduce_examples [label="📉 Снижают важность:\n• реклама, спам, тест\n• развлекательное\n• личное, неформальное", fillcolor=lightyellow];
+    }
+    
+    boost_examples -> keywords_boost;
+    reduce_examples -> keywords_reduce;
+    
+    // Результаты
+    subgraph cluster_results {
+        label="🎯 Результаты анализа";
+        style=filled;
+        color=lightblue;
+        
+        important [label="✅ Важное\n(≥ 0.7)", fillcolor=lightgreen];
+        not_important [label="❌ Неважное\n(< 0.7)", fillcolor=lightcoral];
+        publish [label="📢 Публикация\nв канале", fillcolor=lightgreen];
+        ignore [label="🚫 Игнорирование", fillcolor=lightcoral];
+    }
+    
+    decision -> important [label="Важное"];
+    decision -> not_important [label="Неважное"];
+    important -> publish;
+    not_important -> ignore;
+    
+    // Стили для лучшей читаемости
+    edge [color=blue, penwidth=2];
+    input_message -> preprocess;
+    giga_chat_request -> giga_chat_response;
+    final_score -> decision;
+    
+    edge [color=green, penwidth=1];
+    important -> publish;
+    
+    edge [color=red, penwidth=1];
+    not_important -> ignore;
+    
+    edge [color=orange, penwidth=1];
+    keywords_boost -> check_keywords;
+    keywords_reduce -> check_keywords;
+    source_boost -> check_source;
+    source_reduce -> check_source;
+} 

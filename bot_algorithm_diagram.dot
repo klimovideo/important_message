@@ -1,0 +1,189 @@
+digraph BotAlgorithm {
+    // Настройки графа
+    rankdir=TB;
+    node [shape=box, style=filled, fontname="Arial", fontsize=10];
+    edge [fontname="Arial", fontsize=9];
+    
+    // Цветовая схема
+    subgraph cluster_legend {
+        label="Легенда";
+        style=filled;
+        color=lightgrey;
+        
+        start [label="Начало/Конец", shape=ellipse, fillcolor=lightblue];
+        process [label="Процесс", fillcolor=lightgreen];
+        decision [label="Решение", shape=diamond, fillcolor=yellow];
+        storage [label="Хранилище", shape=cylinder, fillcolor=orange];
+        external [label="Внешний сервис", shape=box, fillcolor=lightcoral];
+        user [label="Пользователь", shape=box, fillcolor=lightpink];
+    }
+    
+    // Основные компоненты системы
+    subgraph cluster_system {
+        label="Система мониторинга важных сообщений";
+        style=filled;
+        color=lightblue;
+        
+        // Начальные точки
+        start_bot [label="🚀 Запуск бота", shape=ellipse, fillcolor=lightblue];
+        user_start [label="👤 Пользователь\nначинает работу", shape=ellipse, fillcolor=lightblue];
+        
+        // Инициализация
+        init_storage [label="📁 Инициализация\nхранилища данных", fillcolor=lightgreen];
+        load_config [label="⚙️ Загрузка\nконфигурации", fillcolor=lightgreen];
+        setup_handlers [label="🔧 Настройка\nобработчиков", fillcolor=lightgreen];
+        
+        // Хранилища
+        user_prefs [label="👥 Пользовательские\nнастройки", shape=cylinder, fillcolor=orange];
+        bot_config [label="🤖 Конфигурация\nбота", shape=cylinder, fillcolor=orange];
+        pending_posts [label="📝 Очередь постов\nна модерацию", shape=cylinder, fillcolor=orange];
+        
+        // Основные процессы
+        check_user_type [label="🔍 Определение\nтипа пользователя", shape=diamond, fillcolor=yellow];
+        
+        // Администратор
+        admin_menu [label="👑 Меню\nадминистратора", fillcolor=lightgreen];
+        admin_actions [label="⚡ Действия\nадминистратора", fillcolor=lightgreen];
+        
+        // Обычный пользователь
+        user_menu [label="👤 Меню\nпользователя", fillcolor=lightgreen];
+        user_actions [label="📝 Действия\nпользователя", fillcolor=lightgreen];
+    }
+    
+    // Мониторинг сообщений
+    subgraph cluster_monitoring {
+        label="Мониторинг сообщений";
+        style=filled;
+        color=lightgreen;
+        
+        // Источники сообщений
+        passive_monitoring [label="📤 Пассивный мониторинг\n(пересланные сообщения)", fillcolor=lightgreen];
+        active_monitoring [label="🤖 Активный мониторинг\n(Userbot)", fillcolor=lightgreen];
+        
+        // Обработка сообщений
+        receive_message [label="📨 Получение\nсообщения", fillcolor=lightgreen];
+        extract_info [label="🔍 Извлечение\nинформации", fillcolor=lightgreen];
+        check_source [label="✅ Проверка\nисточника", shape=diamond, fillcolor=yellow];
+        
+        // AI анализ
+        ai_analysis [label="🧠 AI анализ\nважности", fillcolor=lightgreen];
+        giga_chat [label="🤖 GigaChat API", shape=box, fillcolor=lightcoral];
+        
+        // Принятие решений
+        check_importance [label="⭐ Проверка\nважности", shape=diamond, fillcolor=yellow];
+        check_threshold [label="📊 Сравнение\nс порогом", shape=diamond, fillcolor=yellow];
+    }
+    
+    // Модерация и публикация
+    subgraph cluster_moderation {
+        label="Модерация и публикация";
+        style=filled;
+        color=lightyellow;
+        
+        // Модерация
+        inline_moderation [label="⚡ Inline модерация\n(кнопки)", fillcolor=lightgreen];
+        admin_review [label="👑 Рассмотрение\nадминистратором", fillcolor=lightgreen];
+        
+        // Решения модерации
+        approve_decision [label="✅ Одобрить", shape=diamond, fillcolor=yellow];
+        reject_decision [label="❌ Отклонить", shape=diamond, fillcolor=yellow];
+        
+        // Публикация
+        auto_publish [label="🚀 Автопубликация", fillcolor=lightgreen];
+        manual_publish [label="📝 Ручная\nпубликация", fillcolor=lightgreen];
+        publish_channel [label="📢 Канал\nпубликации", shape=box, fillcolor=lightcoral];
+        
+        // Уведомления
+        notify_user [label="📱 Уведомление\nпользователя", fillcolor=lightgreen];
+        notify_admins [label="🔔 Уведомление\nадминистраторов", fillcolor=lightgreen];
+    }
+    
+    // Userbot функциональность
+    subgraph cluster_userbot {
+        label="Userbot (скрытый мониторинг)";
+        style=filled;
+        color=lightpink;
+        
+        userbot_start [label="🤖 Запуск\nUserbot", fillcolor=lightgreen];
+        userbot_join [label="➕ Присоединение\nк каналу", fillcolor=lightgreen];
+        userbot_monitor [label="👁️ Мониторинг\nсообщений", fillcolor=lightgreen];
+        userbot_process [label="🔄 Обработка\nсообщений", fillcolor=lightgreen];
+    }
+    
+    // Связи между компонентами
+    start_bot -> init_storage;
+    init_storage -> load_config;
+    load_config -> setup_handlers;
+    setup_handlers -> user_start;
+    
+    user_start -> check_user_type;
+    check_user_type -> admin_menu [label="Администратор"];
+    check_user_type -> user_menu [label="Пользователь"];
+    
+    admin_menu -> admin_actions;
+    user_menu -> user_actions;
+    
+    // Мониторинг
+    passive_monitoring -> receive_message;
+    active_monitoring -> receive_message;
+    userbot_start -> userbot_join;
+    userbot_join -> userbot_monitor;
+    userbot_monitor -> userbot_process;
+    userbot_process -> receive_message;
+    
+    receive_message -> extract_info;
+    extract_info -> check_source;
+    check_source -> ai_analysis [label="Источник\nмониторится"];
+    check_source -> end [label="Источник\nне мониторится"];
+    
+    ai_analysis -> giga_chat;
+    giga_chat -> check_importance;
+    check_importance -> check_threshold;
+    check_threshold -> inline_moderation [label="Важное"];
+    check_threshold -> end [label="Неважное"];
+    
+    // Модерация
+    inline_moderation -> admin_review;
+    admin_review -> approve_decision;
+    admin_review -> reject_decision;
+    
+    approve_decision -> auto_publish [label="Автопубликация\nвключена"];
+    approve_decision -> manual_publish [label="Ручная\nпубликация"];
+    
+    auto_publish -> publish_channel;
+    manual_publish -> publish_channel;
+    
+    approve_decision -> notify_user;
+    reject_decision -> notify_user;
+    
+    // Хранилища
+    init_storage -> user_prefs;
+    init_storage -> bot_config;
+    init_storage -> pending_posts;
+    
+    // Конечные точки
+    end [label="🏁 Конец\nобработки", shape=ellipse, fillcolor=lightblue];
+    
+    // Дополнительные связи
+    admin_actions -> passive_monitoring [label="Настройка\nмониторинга"];
+    admin_actions -> active_monitoring [label="Управление\nUserbot"];
+    user_actions -> passive_monitoring [label="Предложение\nпоста"];
+    
+    // Стили для лучшей читаемости
+    edge [color=blue, penwidth=2];
+    start_bot -> init_storage;
+    user_start -> check_user_type;
+    receive_message -> extract_info;
+    ai_analysis -> giga_chat;
+    approve_decision -> auto_publish;
+    
+    edge [color=red, penwidth=1];
+    check_source -> end;
+    check_threshold -> end;
+    reject_decision -> notify_user;
+    
+    edge [color=green, penwidth=1];
+    approve_decision -> notify_user;
+    auto_publish -> publish_channel;
+    manual_publish -> publish_channel;
+} 
