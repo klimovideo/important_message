@@ -7,7 +7,7 @@ from telegram import Bot, Update
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
 
-from models import Storage, PendingPost, PostStatus, BotConfig
+from models import Storage, PendingPost, PostStatus, BotConfig, PostCategory
 from ai_service import evaluate_message_importance
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ class AdminService:
             return False
     
     @staticmethod
-    async def submit_post_for_review(user_id: int, message_text: str, source_info: str = None) -> str:
+    async def submit_post_for_review(user_id: int, message_text: str, source_info: str = None, category: str = None) -> str:
         """
         Отправляет пост на модерацию
         
@@ -64,6 +64,7 @@ class AdminService:
             user_id: ID пользователя, который отправляет пост
             message_text: Текст сообщения
             source_info: Информация об источнике сообщения
+            category: Категория поста
             
         Returns:
             str: ID созданного поста
@@ -76,19 +77,24 @@ class AdminService:
         # Создаем уникальный ID поста
         post_id = str(uuid.uuid4())[:8]
         
+        # Используем категорию по умолчанию, если не указана
+        if category is None:
+            category = PostCategory.GENERAL
+        
         # Создаем объект поста
         post = PendingPost(
             post_id=post_id,
             user_id=user_id,
             message_text=message_text,
+            category=category,
             source_info=source_info,
-            status=PostStatus.PENDING
+            submitted_at=datetime.now()
         )
         
-        # Сохраняем пост в очереди
+        # Сохраняем пост
         Storage.add_pending_post(post)
         
-        logger.info(f"Пост {post_id} от пользователя {user_id} добавлен в очередь на модерацию")
+        logger.info(f"Создан новый пост {post_id} от пользователя {user_id}")
         return post_id
     
     @staticmethod

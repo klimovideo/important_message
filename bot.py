@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackContext, MessageHa
 from telegram.constants import ParseMode
 
 from config import TELEGRAM_TOKEN, DEFAULT_IMPORTANCE_THRESHOLD, USERBOT_ENABLED
-from models import Message, Storage, UserPreferences, PostStatus
+from models import Message, Storage, UserPreferences, PostStatus, PostCategory
 from ai_service import evaluate_message_importance
 from admin_service import AdminService
 from utils import setup_logging
@@ -372,6 +372,9 @@ async def show_monitoring_interface(update: Update, context: CallbackContext, us
         [
             InlineKeyboardButton("🗑️ Удалить источник", callback_data="monitoring_remove"),
             InlineKeyboardButton("🧹 Очистить все", callback_data="monitoring_clear")
+        ],
+        [
+            InlineKeyboardButton("🔑 Ключевые слова", callback_data="settings_keywords")
         ]
     ]
     
@@ -422,24 +425,24 @@ async def show_settings_interface(update: Update, context: CallbackContext, user
     
     settings_text = (
         f"⚙️ <b>Настройки</b>\n\n"
-        f"📊 <b>Ваши параметры:</b>\n"
-        f"• Порог важности: {Storage.bot_config.importance_threshold} (глобальный)\n"
+        f"📊 <b>Параметры мониторинга:</b>\n"
+        f"• Порог важности: {Storage.bot_config.importance_threshold}\n"
         f"• Мониторится чатов: {len(user.monitored_chats)}\n"
         f"• Мониторится каналов: {len(user.monitored_channels)}\n"
-        f"• Можете предлагать посты: {'Да' if user.can_submit_posts else 'Нет'}\n\n"
-        f"🔑 <b>Ключевые слова:</b>\n"
+    )
+    
+    # Добавляем настройки для администраторов
+    if Storage.is_admin(user.user_id):
+        settings_text += (
+            f"• Автопубликация: {'Включена' if config.auto_publish_enabled else 'Отключена'}\n"
+            f"• Требует одобрения: {'Да' if config.require_admin_approval else 'Нет'}\n"
+        )
+    
+    settings_text += (
+        f"\n🔑 <b>Ключевые слова:</b>\n"
         f"• Важные: {keywords[:100]}{'...' if len(keywords) > 100 else ''}\n"
         f"• Исключаемые: {exclude_keywords[:100]}{'...' if len(exclude_keywords) > 100 else ''}\n"
     )
-    
-    # Добавляем глобальные настройки для администраторов
-    if Storage.is_admin(user.user_id):
-        settings_text += (
-            f"\n\n🌐 <b>Глобальные настройки:</b>\n"
-            f"• Автопубликация: {'Включена' if config.auto_publish_enabled else 'Отключена'}\n"
-            f"• Требует одобрения: {'Да' if config.require_admin_approval else 'Нет'}\n"
-            f"• Глобальный порог: {config.importance_threshold}\n"
-        )
     
     settings_text += "\n\n💡 Используйте кнопки для изменения настроек"
     
@@ -449,7 +452,7 @@ async def show_settings_interface(update: Update, context: CallbackContext, user
         ]
     ]
     
-    # Добавляем кнопки глобальных настроек для администраторов
+    # Добавляем кнопки настроек для администраторов
     if Storage.is_admin(user.user_id):
         keyboard.append([
             InlineKeyboardButton(
@@ -464,12 +467,11 @@ async def show_settings_interface(update: Update, context: CallbackContext, user
             )
         ])
         keyboard.append([
-            InlineKeyboardButton("📊 Глобальный порог", callback_data="admin_threshold")
+            InlineKeyboardButton("📊 Порог важности", callback_data="admin_threshold")
         ])
     
     keyboard.append([
-        InlineKeyboardButton("🗑️ Очистить данные", callback_data="settings_clear"),
-        InlineKeyboardButton("🔄 Сброс настроек", callback_data="settings_reset")
+        InlineKeyboardButton("🗑️ Очистить данные", callback_data="settings_clear")
     ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -711,8 +713,7 @@ async def show_admin_config(update: Update, context: CallbackContext) -> None:
 async def show_channel_config(update: Update, context: CallbackContext) -> None:
     """Show channel configuration interface."""
     config = Storage.bot_config
-    channel_info = f"<code>{html.escape(str(config.publish_channel_id))}</code>" if config.publish_channel_id else "Не настроен"
-    username_info = f"@{html.escape(config.publish_channel_username)}" if config.publish_channel_username else "Не указан"
+    username_info = f"@{html.escape(config.publish_channel_username)}" if config.publish_channel_username else "Не настроен"
     
     # Устанавливаем состояние для администратора
     user_id = update.effective_user.id
@@ -720,49 +721,25 @@ async def show_channel_config(update: Update, context: CallbackContext) -> None:
     user.current_state = "channel_setup"
     Storage.update_user(user)
     
-    # Получаем список каналов, где бот является администратором
-    admin_channels = await get_bot_admin_channels(context.bot)
-    
     # Используем простой reply_text
     message_func = update.message.reply_text
     
     channel_text = (
         f"📢 <b>Настройка канала публикации</b>\n\n"
-        f"📋 <b>Текущий канал:</b> {channel_info}\n"
-        f"🏷️ <b>Username:</b> {username_info}\n\n"
+        f"📋 <b>Текущий канал:</b> {username_info}\n\n"
+        f"💡 <b>Как настроить:</b>\n"
+        "1. Создайте канал в Telegram\n"
+        "2. Добавьте бота администратором в канал\n"
+        "3. Отправьте ссылку на канал боту\n\n"
+        f"📨 <b>Отправьте ссылку в формате:</b>\n"
+        f"• @channel_username\n"
+        f"• https://t.me/channel_username\n"
+        f"• ID канала: -1001234567890"
     )
     
-    keyboard = []
-    
-    if admin_channels:
-        channel_text += f"📊 <b>Доступные каналы (где бот админ):</b>\n"
-        for channel in admin_channels:
-            channel_name = channel['title']
-            if channel['username']:
-                channel_name += f" (@{channel['username']})"
-            channel_text += f"• {html.escape(channel_name)}\n"
-            
-            # Добавляем кнопку для быстрого выбора канала
-            button_text = f"📢 {channel['title'][:30]}"
-            keyboard.append([InlineKeyboardButton(button_text, callback_data=f"set_channel_{channel['id']}")])
-        
-        channel_text += "\n💡 <b>Нажмите на канал выше для быстрого выбора</b>\n\n"
-    else:
-        channel_text += "⚠️ <b>Нет доступных каналов</b>\n"
-        channel_text += "Добавьте бота администратором в канал, затем обновите эту страницу\n\n"
-    
-    channel_text += (
-        f"💡 <b>Или отправьте вручную:</b>\n"
-        f"• ID канала (например: -1001234567890)\n"
-        f"• Username канала (например: @my_channel)\n"
-        f"• Ссылку на канал (например: https://t.me/my_channel)\n"
-        f"• Короткую ссылку (например: t.me/my_channel)\n\n"
-        f"🔧 <b>Просто отправьте любой из этих форматов следующим сообщением!</b>"
-    )
-    
-    keyboard.append([InlineKeyboardButton("🔄 Обновить список", callback_data="refresh_channels")])
-    keyboard.append([InlineKeyboardButton("🗑️ Очистить настройки", callback_data="admin_clear_channel")])
-    keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="cancel_channel_setup")])
+    keyboard = [
+        [InlineKeyboardButton("❌ Отмена", callback_data="cancel_channel_setup")]
+    ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -781,11 +758,13 @@ async def show_admins_management(update: Update, context: CallbackContext) -> No
     admins_text = (
         f"👥 <b>Администраторы бота</b>\n\n"
         f"📊 <b>Всего:</b> {len(config.admin_ids)}\n\n"
-        f"📋 <b>Список:</b>\n"
+        f"📋 <b>Список администраторов:</b>\n"
     )
     
+    keyboard = []
+    
     # Получаем информацию о каждом администраторе
-    for i, admin_id in enumerate(config.admin_ids, 1):
+    for admin_id in config.admin_ids:
         try:
             # Пытаемся получить информацию о пользователе
             chat_member = await context.bot.get_chat(admin_id)
@@ -803,24 +782,37 @@ async def show_admins_management(update: Update, context: CallbackContext) -> No
             else:
                 display_name = "Неизвестный пользователь"
             
-            admins_text += f"{i}. {display_name} (ID: {admin_id})\n"
+            admins_text += f"• {display_name} (ID: {admin_id})\n"
+            
+            # Добавляем кнопку удаления для каждого админа (кроме текущего пользователя)
+            if admin_id != user_id:
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"❌ Удалить {display_name}", 
+                        callback_data=f"remove_admin_{admin_id}"
+                    )
+                ])
         except Exception as e:
             # Если не удалось получить информацию, показываем только ID
-            admins_text += f"{i}. ID: {admin_id} (не удалось получить информацию)\n"
+            admins_text += f"• ID: {admin_id} (не удалось получить информацию)\n"
+            if admin_id != user_id:
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"❌ Удалить ID: {admin_id}", 
+                        callback_data=f"remove_admin_{admin_id}"
+                    )
+                ])
     
-    admins_text += (
-        f"\n💡 <b>Для добавления/удаления отправьте:</b>\n"
-        f"• <code>+123456789</code> - добавить админа по ID\n"
-        f"• <code>+@username</code> - добавить админа по юзернейму\n"
-        f"• <code>-123456789</code> - удалить админа по ID\n"
-        f"• <code>-@username</code> - удалить админа по юзернейму\n\n"
-        f"🔧 <b>Или используйте команды:</b>\n"
-        f"/admin_add user_id_или_@username\n"
-        f"/admin_remove user_id_или_@username"
-    )
+    # Добавляем кнопку для добавления нового админа
+    keyboard.append([
+        InlineKeyboardButton("➕ Добавить администратора", callback_data="add_admin")
+    ])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
         admins_text,
+        reply_markup=reply_markup,
         parse_mode=ParseMode.HTML
     )
 
@@ -1192,26 +1184,106 @@ async def handle_text_messages(update: Update, context: CallbackContext) -> None
         return
     
     # Handle admin threshold setup
-    if Storage.is_admin(user_id) and user.current_state == "admin_threshold_setup" and text.replace('.', '').isdigit() and 0 <= float(text) <= 1:
-        threshold = float(text)
-        config = Storage.bot_config
-        config.importance_threshold = threshold
-        Storage.update_config(config)
+    if Storage.is_admin(user_id) and user.current_state == "admin_threshold_setup":
+        try:
+            # Проверяем, что это число
+            threshold = float(text.replace(',', '.'))
+            if 0 <= threshold <= 1:
+                config = Storage.bot_config
+                config.importance_threshold = threshold
+                Storage.update_config(config)
+                
+                # Сбрасываем состояние пользователя
+                user.current_state = None
+                Storage.update_user(user)
+                
+                await update.message.reply_text(
+                    f"✅ <b>Глобальный порог важности установлен:</b> {threshold}\n\n"
+                    f"💡 Теперь все пользователи будут получать уведомления о сообщениях с важностью выше {threshold}",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            else:
+                await update.message.reply_text(
+                    "❌ Порог должен быть числом от 0.0 до 1.0\n"
+                    "Попробуйте еще раз.",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Неверный формат числа. Используйте формат: 0.7\n"
+                "Попробуйте еще раз.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+    
+    # Handle add admin state (новое состояние для добавления админа через инлайн-кнопку)
+    elif Storage.is_admin(user_id) and user.current_state == "add_admin":
+        text = text.strip()
         
-        # Сбрасываем состояние пользователя
+        # Проверяем, это ID или username
+        if text.isdigit():
+            new_admin_id = int(text)
+        elif text.startswith('@'):
+            # Пытаемся получить ID по username
+            try:
+                chat_member = await context.bot.get_chat(text)
+                new_admin_id = chat_member.id
+            except Exception as e:
+                await update.message.reply_text(f"❌ Не удалось найти пользователя {html.escape(text)}")
+                user.current_state = None
+                Storage.update_user(user)
+                return
+        else:
+            await update.message.reply_text("❌ Неверный формат. Используйте ID или @username")
+            return
+        
+        # Добавляем администратора
+        if new_admin_id in Storage.bot_config.admin_ids:
+            await update.message.reply_text(f"⚠️ Пользователь уже является администратором.")
+        else:
+            Storage.add_admin(new_admin_id)
+            
+            # Получаем информацию о новом админе
+            try:
+                chat_member = await context.bot.get_chat(new_admin_id)
+                username = chat_member.username
+                first_name = chat_member.first_name
+                last_name = chat_member.last_name
+                
+                if username:
+                    display_name = f"@{username}"
+                elif first_name:
+                    display_name = f"{first_name}"
+                    if last_name:
+                        display_name += f" {last_name}"
+                else:
+                    display_name = "Неизвестный пользователь"
+                
+                await update.message.reply_text(
+                    f"✅ <b>Администратор добавлен</b>\n\n"
+                    f"👤 {html.escape(display_name)}\n"
+                    f"🆔 ID: {new_admin_id}",
+                    parse_mode=ParseMode.HTML
+                )
+                
+                # Уведомляем нового администратора
+                try:
+                    await context.bot.send_message(
+                        chat_id=new_admin_id,
+                        text="🎉 <b>Поздравляем!</b>\n\nВы были назначены администратором бота.\n\nТеперь вам доступны дополнительные функции управления.",
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception:
+                    pass
+            except Exception:
+                await update.message.reply_text(f"✅ Администратор с ID {new_admin_id} добавлен.")
+        
+        # Сбрасываем состояние
         user.current_state = None
         Storage.update_user(user)
-        
-        await update.message.reply_text(
-            f"✅ <b>Глобальный порог важности установлен:</b> {threshold}\n\n"
-            f"💡 Теперь все пользователи будут получать уведомления о сообщениях с важностью выше {threshold}",
-            parse_mode=ParseMode.HTML
-        )
         return
-    
-
-    
-
     
     # Handle channel suggestions from regular users
     elif not Storage.is_admin(user_id) and (
@@ -1451,26 +1523,36 @@ async def handle_channel_config_text(update: Update, context: CallbackContext, t
 
 
 async def handle_post_submission_text(update: Update, context: CallbackContext, text: str) -> None:
-    """Handle post submission from regular text."""
+    """Handle text submission for post"""
     user_id = update.effective_user.id
     
-    # Show confirmation
+    # Store the text for later use
+    context.user_data['pending_post_text'] = text
+    
+    # Show category selection
     keyboard = [
         [
-            InlineKeyboardButton("✅ Да, отправить на модерацию", callback_data=f"confirm_submit_text"),
+            InlineKeyboardButton("📰 Общие новости", callback_data=f"post_category_{PostCategory.GENERAL}"),
+            InlineKeyboardButton("📚 Книги", callback_data=f"post_category_{PostCategory.BOOKS}")
+        ],
+        [
+            InlineKeyboardButton("🤖 LLM и AI", callback_data=f"post_category_{PostCategory.LLM}"),
+            InlineKeyboardButton("💻 Технологии", callback_data=f"post_category_{PostCategory.TECH}")
+        ],
+        [
+            InlineKeyboardButton("🔬 Наука", callback_data=f"post_category_{PostCategory.SCIENCE}")
+        ],
+        [
             InlineKeyboardButton("❌ Отмена", callback_data="cancel_submit")
         ]
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Store the text for later use
-    context.user_data['pending_post_text'] = text
-    
     await update.message.reply_text(
-        f"📝 <b>Отправить этот текст как пост?</b>\n\n"
-        f"📄 <b>Текст:</b>\n{text[:300]}{'...' if len(text) > 300 else ''}\n\n"
-        f"💡 После отправки пост будет рассмотрен администраторами.",
+        f"📝 <b>Выберите категорию поста</b>\n\n"
+        f"📄 <b>Текст:</b>\n{html.escape(text[:300])}{'...' if len(text) > 300 else ''}\n\n"
+        f"💡 Выберите категорию, чтобы пост был опубликован в соответствующем канале.",
         reply_markup=reply_markup,
         parse_mode=ParseMode.HTML
     )
@@ -1690,35 +1772,46 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
     
     elif data.startswith("admin_reject_"):
         if Storage.is_admin(user_id):
-            post_id = data.replace("admin_reject_", "")
-            success = await AdminService.reject_post(context.bot, post_id, user_id, "Отклонен администратором")
-            
-            if success:
-                # Проверяем, есть ли еще посты на модерации
-                pending_posts = AdminService.get_posts_for_review()
+            parts = data.split("_", 3)
+            if len(parts) >= 3:
+                post_id = parts[2]
+                reason = parts[3] if len(parts) > 3 else None
                 
-                if pending_posts:
-                    # Показываем следующий пост
-                    await query.edit_message_text(
-                        f"❌ Пост {post_id} отклонен.\n\n"
-                        f"📝 Осталось постов на модерации: {len(pending_posts)}",
-                        parse_mode=ParseMode.HTML
-                    )
+                if reason:
+                    # Используем предустановленную причину
+                    success = await AdminService.reject_post(context.bot, post_id, user_id, reason)
                     
-                    # Автоматически показываем следующий пост через 2 секунды
-                    await asyncio.sleep(2)
-                    
-                    # Эмулируем нажатие кнопки "Следующий"
-                    query.data = "admin_next_post"
-                    await callback_handler(update, context)
+                    if success:
+                        # Проверяем, есть ли еще посты на модерации
+                        pending_posts = AdminService.get_posts_for_review()
+                        
+                        if pending_posts:
+                            # Показываем следующий пост
+                            await query.edit_message_text(
+                                f"❌ Пост {post_id} отклонен по причине: {reason}\n\n"
+                                f"📝 Осталось постов на модерации: {len(pending_posts)}",
+                                parse_mode=ParseMode.HTML
+                            )
+                            
+                            # Автоматически показываем следующий пост через 2 секунды
+                            await asyncio.sleep(2)
+                            
+                            # Эмулируем нажатие кнопки "Следующий"
+                            query.data = "admin_next_post"
+                            await callback_handler(update, context)
+                        else:
+                            await query.edit_message_text(
+                                f"❌ Пост {post_id} отклонен по причине: {reason}\n\n"
+                                f"✅ Все посты обработаны!",
+                                parse_mode=ParseMode.HTML
+                            )
+                    else:
+                        await query.edit_message_text(f"❌ Ошибка при отклонении поста {post_id}.")
                 else:
-                    await query.edit_message_text(
-                        f"❌ Пост {post_id} отклонен.\n\n"
-                        f"✅ Все посты обработаны!",
-                        parse_mode=ParseMode.HTML
-                    )
-            else:
-                await query.edit_message_text(f"❌ Ошибка при отклонении поста {post_id}.")
+                    # Показываем меню выбора причины
+                    await show_reject_reasons(query, post_id)
+        else:
+            await query.edit_message_text("❌ У вас нет прав администратора.")
     
     elif data.startswith("admin_full_"):
         if Storage.is_admin(user_id):
@@ -1903,11 +1996,50 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
         )
     
     # Post submission callbacks
-    elif data == "confirm_submit_text":
+    elif data.startswith("post_category_"):
         pending_text = context.user_data.get('pending_post_text')
         if pending_text:
+            category = data.replace("post_category_", "")
+            context.user_data['pending_post_category'] = category
+            
+            # Показываем подтверждение с выбранной категорией
+            category_names = {
+                PostCategory.GENERAL: "📰 Общие новости",
+                PostCategory.BOOKS: "📚 Книги",
+                PostCategory.LLM: "🤖 LLM и AI",
+                PostCategory.TECH: "💻 Технологии",
+                PostCategory.SCIENCE: "🔬 Наука"
+            }
+            
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Да, отправить", callback_data="confirm_submit_text"),
+                    InlineKeyboardButton("❌ Отмена", callback_data="cancel_submit")
+                ]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                f"📝 <b>Подтверждение отправки</b>\n\n"
+                f"📄 <b>Текст:</b>\n{html.escape(pending_text[:300])}{'...' if len(pending_text) > 300 else ''}\n\n"
+                f"🏷️ <b>Категория:</b> {category_names.get(category, '📰 Общие новости')}\n\n"
+                f"💡 После отправки пост будет рассмотрен администраторами.",
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.HTML
+            )
+    
+    elif data == "confirm_submit_text":
+        pending_text = context.user_data.get('pending_post_text')
+        pending_category = context.user_data.get('pending_post_category', PostCategory.GENERAL)
+        if pending_text:
             try:
-                post_id = await AdminService.submit_post_for_review(user_id, pending_text)
+                # Передаем категорию в submit_post_for_review
+                post_id = await AdminService.submit_post_for_review(
+                    user_id, 
+                    pending_text,
+                    category=pending_category
+                )
                 
                 # Notify admins
                 post = Storage.get_pending_post(post_id)
@@ -1917,17 +2049,25 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
                 await query.edit_message_text(
                     f"✅ <b>Пост отправлен на модерацию!</b>\n\n"
                     f"📋 <b>ID поста:</b> {post_id}\n"
-                    f"⏳ <b>Статус:</b> Ожидает рассмотрения",
+                    f"⏳ <b>Статус:</b> Ожидает рассмотрения\n\n"
+                    f"💡 Вы получите уведомление о результатах модерации.",
                     parse_mode=ParseMode.HTML
                 )
                 
-                # Clear stored text
+                # Очищаем данные
                 context.user_data.pop('pending_post_text', None)
+                context.user_data.pop('pending_post_category', None)
                 
+            except PermissionError as e:
+                await query.edit_message_text(f"❌ {html.escape(str(e))}")
             except Exception as e:
-                await query.edit_message_text(f"❌ Ошибка при отправке поста: {e}")
-        else:
-            await query.edit_message_text("❌ Текст поста не найден.")
+                logger.error(f"Ошибка при отправке поста: {e}")
+                await query.edit_message_text("❌ Произошла ошибка при отправке поста.")
+    
+    elif data == "cancel_submit":
+        context.user_data.pop('pending_post_text', None)
+        context.user_data.pop('pending_post_category', None)
+        await query.edit_message_text("❌ Отправка поста отменена.")
     
     elif data == "my_submissions":
         # Получаем посты пользователя
@@ -1944,6 +2084,15 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
         
         # Сортируем по дате
         user_posts.sort(key=lambda x: x.submitted_at, reverse=True)
+        
+        # Категории постов
+        category_names = {
+            PostCategory.GENERAL: "📰 Общие",
+            PostCategory.BOOKS: "📚 Книги",
+            PostCategory.LLM: "🤖 AI",
+            PostCategory.TECH: "💻 Тех",
+            PostCategory.SCIENCE: "🔬 Наука"
+        }
         
         text = "📄 <b>Ваши предложенные посты:</b>\n\n"
         
@@ -1962,17 +2111,15 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
                 PostStatus.PUBLISHED: "Опубликован"
             }.get(post.status, "Неизвестно")
             
-            text += f"{status_emoji} <b>{status_text}</b> - {post.submitted_at.strftime('%d.%m %H:%M')}\n"
+            category = category_names.get(getattr(post, 'category', PostCategory.GENERAL), "📰")
+            
+            text += f"{status_emoji} <b>{status_text}</b> {category} - {post.submitted_at.strftime('%d.%m %H:%M')}\n"
             text += f"   {html.escape(post.message_text[:50])}{'...' if len(post.message_text) > 50 else ''}\n\n"
         
         if len(user_posts) > 10:
             text += f"<i>... и еще {len(user_posts) - 10} постов</i>"
         
         await query.edit_message_text(text, parse_mode=ParseMode.HTML)
-    
-    elif data == "cancel_submit":
-        context.user_data.pop('pending_post_text', None)
-        await query.edit_message_text("❌ Отправка поста отменена.")
     
     # Confirmation callbacks
     elif data == "confirm_clear_monitoring":
@@ -2179,6 +2326,70 @@ async def callback_handler(update: Update, context: CallbackContext) -> None:
                 "Уведомление пользователю не отправляется.",
                 parse_mode=ParseMode.HTML
             )
+    
+    # Admin management callbacks
+    elif data == "add_admin":
+        if Storage.is_admin(user_id):
+            user.current_state = "add_admin"
+            Storage.update_user(user)
+            
+            await query.edit_message_text(
+                "➕ <b>Добавление администратора</b>\n\n"
+                "💡 <b>Отправьте:</b>\n"
+                "• ID пользователя (например: 123456789)\n"
+                "• Username (например: @username)\n\n"
+                "📨 <b>Пользователь получит уведомление о назначении.</b>",
+                parse_mode=ParseMode.HTML
+            )
+    
+    elif data.startswith("remove_admin_"):
+        if Storage.is_admin(user_id):
+            admin_id = int(data.replace("remove_admin_", ""))
+            
+            if admin_id == user_id:
+                await query.edit_message_text("❌ Нельзя удалить себя из администраторов.")
+            elif admin_id in Storage.bot_config.admin_ids:
+                # Подтверждение удаления
+                keyboard = [
+                    [
+                        InlineKeyboardButton("✅ Да, удалить", callback_data=f"confirm_remove_admin_{admin_id}"),
+                        InlineKeyboardButton("❌ Отмена", callback_data="cancel_remove_admin")
+                    ]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await query.edit_message_text(
+                    f"⚠️ <b>Удалить администратора?</b>\n\n"
+                    f"ID: {admin_id}\n\n"
+                    f"Это действие нельзя отменить.",
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML
+                )
+    
+    elif data.startswith("confirm_remove_admin_"):
+        if Storage.is_admin(user_id):
+            admin_id = int(data.replace("confirm_remove_admin_", ""))
+            Storage.remove_admin(admin_id)
+            
+            await query.edit_message_text(
+                f"✅ <b>Администратор удален</b>\n\n"
+                f"ID: {admin_id} больше не является администратором бота.",
+                parse_mode=ParseMode.HTML
+            )
+            
+            # Уведомляем удаленного админа
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text="❌ Вы были удалены из администраторов бота.",
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception as e:
+                logger.debug(f"Не удалось уведомить удаленного админа {admin_id}: {e}")
+    
+    elif data == "cancel_remove_admin":
+        # Возвращаемся к списку админов
+        await show_admins_management(query, context)
 
 # ===========================================
 # HELPER FUNCTIONS FOR CALLBACKS

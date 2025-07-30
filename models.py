@@ -9,6 +9,14 @@ from enum import Enum
 
 logger = logging.getLogger(__name__)
 
+class PostCategory(str, Enum):
+    """Категории постов"""
+    GENERAL = "general"  # Общие новости
+    BOOKS = "books"  # Книги и литература
+    LLM = "llm"  # LLM и AI
+    TECH = "tech"  # Технологии
+    SCIENCE = "science"  # Наука
+
 class PostStatus(str, Enum):
     """Статусы постов в очереди"""
     PENDING = "pending"  # Ожидает модерации
@@ -30,8 +38,16 @@ class ImportanceCriteria(BaseModel):
 class BotConfig(BaseModel):
     """Глобальная конфигурация бота"""
     admin_ids: Set[int] = set()  # ID администраторов
-    publish_channel_id: Optional[int] = None  # ID канала для публикации
+    publish_channel_id: Optional[int] = None  # ID канала для публикации (основной)
     publish_channel_username: Optional[str] = None  # Username канала
+    # Словарь каналов по категориям
+    category_channels: Dict[str, Dict[str, Optional[str]]] = {
+        PostCategory.GENERAL: {"id": None, "username": None},
+        PostCategory.BOOKS: {"id": None, "username": None},
+        PostCategory.LLM: {"id": None, "username": None},
+        PostCategory.TECH: {"id": None, "username": None},
+        PostCategory.SCIENCE: {"id": None, "username": None}
+    }
     importance_threshold: float = 0.7  # Глобальный порог важности
     importance_criteria: ImportanceCriteria = ImportanceCriteria()
     auto_publish_enabled: bool = True  # Автоматическая публикация важных постов
@@ -44,6 +60,7 @@ class PendingPost(BaseModel):
     post_id: str  # Уникальный ID поста
     user_id: int  # ID пользователя, который отправил
     message_text: str  # Текст сообщения
+    category: PostCategory = PostCategory.GENERAL  # Категория поста
     source_info: Optional[str] = None  # Информация об источнике
     importance_score: Optional[float] = None  # Оценка важности ИИ
     status: PostStatus = PostStatus.PENDING
@@ -52,7 +69,7 @@ class PendingPost(BaseModel):
     reviewed_by: Optional[int] = None  # ID админа, который рассмотрел
     admin_comment: Optional[str] = None  # Комментарий админа
     original_message_id: Optional[int] = None  # ID оригинального сообщения
-    original_chat_id: Optional[int] = None  # ID оригинального чата
+    original_chat_id: Optional[int] = None  # ID чата источника
 
 class UserPreferences(BaseModel):
     """User preferences for message filtering"""
