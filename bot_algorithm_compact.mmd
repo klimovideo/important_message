@@ -1,0 +1,28 @@
+graph TD
+    %% Компактная схема для презентаций
+    
+    Input[📥 Сообщения из Telegram]
+    Bot[🤖 Бот-наблюдатель]
+    AI[🧠 ИИ анализ<br/>Оценка: 0-10]
+    Filter{Важное?<br/>≥7 баллов}
+    Admin[👮 Модерация]
+    Channel[📢 Канал важных новостей]
+    
+    Input --> Bot
+    Bot --> AI
+    AI --> Filter
+    Filter -->|ДА| Admin
+    Filter -->|НЕТ| X[❌]
+    Admin -->|✅| Channel
+    Admin -->|❌| X
+    
+    %% Примеры справа
+    AI -.-> E1[📌 ПРИМЕРЫ:<br/><br/>✅ СРОЧНО! = 9<br/>❌ Реклама = 2<br/>⚠️ Встреча = 7]
+    
+    style Input fill:#e3f2fd
+    style Bot fill:#f3e5f5
+    style AI fill:#fff3e0
+    style Filter fill:#fff9c4
+    style Admin fill:#fce4ec
+    style Channel fill:#e8f5e9
+    style X fill:#ffcdd2

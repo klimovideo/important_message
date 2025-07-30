@@ -1,0 +1,63 @@
+graph TD
+    %% Стили
+    classDef input fill:#bbdefb,stroke:#1565c0,stroke-width:2px
+    classDef process fill:#d1c4e9,stroke:#512da8,stroke-width:2px
+    classDef ai fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px
+    classDef human fill:#ffcdd2,stroke:#c62828,stroke-width:2px
+    classDef output fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
+
+    %% Блоки
+    Start([🚀 НАЧАЛО]):::input
+    
+    Input[📱 Новое сообщение<br/>из канала/чата]:::input
+    UserInput[👤 Пользователь<br/>предлагает пост]:::input
+    
+    Bot[🤖 Бот получает<br/>сообщение]:::process
+    
+    Filter[🔍 Проверка:<br/>• Длина текста<br/>• Ключевые слова]:::process
+    
+    AI[🧠 ИИ оценивает<br/>важность<br/>0-10 баллов]:::ai
+    
+    Check{Оценка > 7?}:::process
+    
+    Queue[📋 Очередь<br/>на проверку]:::human
+    
+    Admin[👮 Администратор<br/>проверяет]:::human
+    
+    Decision{Публиковать?}:::human
+    
+    Publish[📢 ПУБЛИКАЦИЯ<br/>в канале<br/>важных новостей]:::output
+    
+    Notify[✅ Уведомление<br/>автору]:::output
+    
+    Reject[❌ Отклонено]:::output
+    
+    End([🏁 КОНЕЦ]):::output
+
+    %% Связи
+    Start --> Input
+    Start --> UserInput
+    
+    Input --> Bot
+    UserInput --> Bot
+    
+    Bot --> Filter
+    Filter --> AI
+    AI --> Check
+    
+    Check -->|ДА ✅| Queue
+    Check -->|НЕТ ❌| End
+    
+    Queue --> Admin
+    Admin --> Decision
+    
+    Decision -->|ДА ✅| Publish
+    Decision -->|НЕТ ❌| Reject
+    
+    Publish --> Notify
+    Reject --> Notify
+    Notify --> End
+
+    %% Примеры
+    Input -.->|Пример:| Ex1[/"СРОЧНО: завтра<br/>день открытых дверей"<br/>📊 Оценка: 9/10"/]
+    Check -.->|Пример:| Ex2[/"Продаю велосипед"<br/>📊 Оценка: 2/10"/]
